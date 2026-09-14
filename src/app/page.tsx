@@ -12,12 +12,13 @@ export default function Home() {
 
   const categories = [
     "All Categories",
+    "Singles",
+    "Doubles",
     "Men's Singles",
     "Men's Doubles",
     "Women's Singles",
     "Women's Doubles",
-    "Mixed Doubles",
-    "Gender Neutral Doubles"
+    "Mixed Doubles"
   ];
 
   useEffect(() => {
@@ -71,43 +72,43 @@ export default function Home() {
   });
 
   if (loading) return (
-    <div className="text-center py-20">
-      <div className="text-[#C9A959] text-lg font-medium animate-pulse">Loading...</div>
+    <div style={{ textAlign: 'center', padding: '48px', color: '#C9A959' }}>
+      <div style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px' }}>Loading...</div>
     </div>
   );
 
   return (
-    <div className="space-y-8">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
       {/* Competition Header */}
-      <div className="border-b border-[#1a1a1a] pb-6">
-        <h1 className="text-3xl font-bold text-white mb-2">{competitionName}</h1>
-        <p className="text-[#888] text-sm">Live scores and results</p>
+      <div style={{ borderBottom: '1px solid #1a1a1a', paddingBottom: '24px' }}>
+        <h1 style={{ fontSize: '32px', fontWeight: 'bold', color: '#ffffff', margin: '0 0 8px 0' }}>{competitionName}</h1>
+        <p style={{ color: '#888888', fontSize: '14px', margin: 0 }}>Live scores and results</p>
       </div>
 
       {/* Filters */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="card p-4">
-          <label className="block text-xs font-medium text-[#888] uppercase tracking-wider mb-2">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px' }}>
+        <div style={{ background: '#111111', border: '1px solid #1a1a1a', borderRadius: '4px', padding: '16px' }}>
+          <label style={{ display: 'block', fontSize: '11px', color: '#888888', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>
             Follow Your Team
           </label>
           <select 
             value={selectedTeam} 
             onChange={(e) => setSelectedTeam(e.target.value)}
-            className="input-field w-full p-3 rounded text-sm"
+            style={{ width: '100%', padding: '10px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', fontSize: '14px' }}
           >
             <option value="All Teams">Show All Teams</option>
             {teams.map((t: any) => <option key={t.id} value={t.name}>{t.name}</option>)}
           </select>
         </div>
 
-        <div className="card p-4">
-          <label className="block text-xs font-medium text-[#888] uppercase tracking-wider mb-2">
+        <div style={{ background: '#111111', border: '1px solid #1a1a1a', borderRadius: '4px', padding: '16px' }}>
+          <label style={{ display: 'block', fontSize: '11px', color: '#888888', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>
             Category
           </label>
           <select 
             value={selectedCategory} 
             onChange={(e) => setSelectedCategory(e.target.value)}
-            className="input-field w-full p-3 rounded text-sm"
+            style={{ width: '100%', padding: '10px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', fontSize: '14px' }}
           >
             {categories.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
           </select>
@@ -116,59 +117,68 @@ export default function Home() {
 
       {/* Matches */}
       <div>
-        <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-          <span className="w-2 h-2 bg-[#C9A959] rounded-full animate-pulse"></span>
+        <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#ffffff', marginBottom: '24px' }}>
           LIVE & UPCOMING MATCHES
         </h2>
         
-        <div className="space-y-3">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {filteredMatches.map((match: any) => (
-            <div key={match.id} className="card card-hover p-5">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <div className="text-xs text-[#888] mb-1">{match.court}</div>
-                  <div className="text-sm font-medium text-[#C9A959]">{match.scheduled_time}</div>
+            <div key={match.id} style={{ background: '#111111', border: '1px solid #1a1a1a', borderRadius: '4px', padding: '20px' }}>
+              {/* Match Header */}
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959' }}>Match #{match.match_number}</span>
+                  <span style={{ fontSize: '11px', color: '#888888', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                    Category: {match.category}
+                  </span>
                 </div>
-                <div className="flex gap-2">
-                  <span className="badge px-3 py-1 rounded">{match.game_type}</span>
-                  {match.category && (
-                    <span className="badge px-3 py-1 rounded bg-[#1a1a1a] text-[#888]">
-                      {match.category}
-                    </span>
-                  )}
+                <div style={{ fontSize: '12px', color: '#888888', marginBottom: '4px' }}>
+                  {match.court} | {match.scheduled_time}
+                </div>
+                <div style={{ fontSize: '13px', color: '#ffffff', fontWeight: '600' }}>
+                  Player/s: {match.game_type}
                 </div>
               </div>
-              
-              <div className="flex justify-between items-center">
-                <div className="flex-1">
-                  <div className={`team-name ${match.winner_id === match.team1_id ? 'winner' : ''}`}>
+
+              {/* Teams and Score */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 0' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '16px', fontWeight: '600', color: match.winner_id === match.team1_id ? '#C9A959' : '#ffffff' }}>
                     {match.team1?.name || 'TBD'}
                   </div>
                 </div>
                 
-                <div className="score-display px-8">
+                <div style={{ textAlign: 'center', minWidth: '120px' }}>
                   {match.status === 'completed' || match.status === 'live' ? (
-                    <div className="text-center">
-                      <div>{match.team1_score}</div>
-                      <div className="text-xs text-[#888] font-normal mt-1">-</div>
-                      <div>{match.team2_score}</div>
+                    <div>
+                      <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#ffffff' }}>
+                        {match.team1_score} - {match.team2_score}
+                      </div>
                     </div>
                   ) : (
-                    <div className="text-sm font-medium text-[#888]">VS</div>
+                    <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#888888' }}>VS</div>
                   )}
                 </div>
 
-                <div className="flex-1 text-right">
-                  <div className={`team-name ${match.winner_id === match.team2_id ? 'winner' : ''}`}>
+                <div style={{ flex: 1, textAlign: 'right' }}>
+                  <div style={{ fontSize: '16px', fontWeight: '600', color: match.winner_id === match.team2_id ? '#C9A959' : '#ffffff' }}>
                     {match.team2?.name || 'TBD'}
                   </div>
                 </div>
               </div>
 
               {match.status === 'completed' && (
-                <div className="mt-4 pt-3 border-t border-[#1a1a1a] text-center">
-                  <span className="text-xs font-medium text-[#C9A959] uppercase tracking-wider">
+                <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #1a1a1a', textAlign: 'center' }}>
+                  <span style={{ fontSize: '12px', color: '#22c55e', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: '600' }}>
                     Winner: {match.winner_id === match.team1_id ? match.team1?.name : match.team2?.name}
+                  </span>
+                </div>
+              )}
+
+              {match.status === 'live' && (
+                <div style={{ marginTop: '12px', padding: '8px', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '4px', textAlign: 'center' }}>
+                  <span style={{ fontSize: '11px', color: '#3b82f6', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 'bold' }}>
+                    LIVE
                   </span>
                 </div>
               )}
@@ -176,7 +186,7 @@ export default function Home() {
           ))}
           
           {filteredMatches.length === 0 && (
-            <div className="text-center py-12 text-[#888]">
+            <div style={{ textAlign: 'center', padding: '48px', color: '#888888' }}>
               No matches found
             </div>
           )}
