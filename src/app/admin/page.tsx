@@ -74,8 +74,9 @@ export default function AdminPage() {
   };
 
   const resetMatchScore = async (matchId: string) => {
-    if (!confirm("Reset this match score?")) return;
+    if (!confirm("Reset this match score? Standings will be recalculated.")) return;
     await supabase.from("matches").update({ team1_score: 0, team2_score: 0, winner_id: null, status: "upcoming" }).eq("id", matchId);
+    await recalculateStandings();
     fetchData();
   };
 
