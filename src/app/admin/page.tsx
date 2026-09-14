@@ -18,6 +18,7 @@ export default function AdminPage() {
   const categories = [
     "Men's Singles", "Men's Doubles", "Women's Singles", 
     "Women's Doubles", "Mixed Doubles", "Gender Neutral Doubles"
+    "Singles", "Doubles"
   ];
 
   // 1. Fetch competitions on login
@@ -150,12 +151,50 @@ export default function AdminPage() {
   };
 
   const resetMatchScore = async (matchId: string) => {
-    if (!confirm("Reset this match score?")) return;
-    await supabase.from("matches").update({
-      team1_score: 0, team2_score: 0, winner_id: null, status: "upcoming"
-    }).eq("id", matchId);
-    fetchData();
-  };
+  if (!confirm("Reset this match score? This will also update the standings.")) return;
+  
+  // Get the current match data before resetting
+  const match = matches.find(m => m.id === matchId);
+  if (!match || match.status !== 'completed') return;
+  
+  // Subtract the old stats from standings
+  const t1OldWin = (match.team1_score || 0) > (match.team2_score || 0) ? 1 : 0;
+  const t2OldWin = (match.team2_score || 0) > (match.team1_score || 0) ? 1 : 0;
+
+  // Update Team 1 - subtract old stats
+  const { data: s1 } = await supabase.from('group_standings').select('*').eq('competition_id', currentCompId).eq('team_id', match.team1_id).single();
+  if (s1) {
+    await supabase.from('group_standings').update({
+      matches_played: Math.max(0, (s1.matches_played || 0) - 1),
+      wins: Math.max(0, (s1.wins || 0) - t1OldWin),
+      losses: Math.max(0, (s1.losses || 0) - (t1OldWin === 0 ? 1 : 0)),
+      points_for: Math.max(0, (s1.points_for || 0) - (match.team1_score || 0)),
+      points_against: Math.max(0, (s1.points_against || 0) - (match.team2_score || 0))
+    }).eq('id', s1.id);
+  }
+
+  // Update Team 2 - subtract old stats
+  const { data: s2 } = await supabase.from('group_standings').select('*').eq('competition_id', currentCompId).eq('team_id', match.team2_id).single();
+  if (s2) {
+    await supabase.from('group_standings').update({
+      matches_played: Math.max(0, (s2.matches_played || 0) - 1),
+      wins: Math.max(0, (s2.wins || 0) - t2OldWin),
+      losses: Math.max(0, (s2.losses || 0) - (t2OldWin === 0 ? 1 : 0)),
+      points_for: Math.max(0, (s2.points_for || 0) - (match.team2_score || 0)),
+      points_against: Math.max(0, (s2.points_against || 0) - (match.team1_score || 0))
+    }).eq('id', s2.id);
+  }
+
+  // Reset the match
+  await supabase.from("matches").update({
+    team1_score: 0, 
+    team2_score: 0, 
+    winner_id: null, 
+    status: "upcoming"
+  }).eq("id", matchId);
+  
+  fetchData();
+};
 
   const resetAllScores = async () => {
     if (!confirm("WARNING: This will reset ALL match scores and standings in this competition. Are you sure?")) return;

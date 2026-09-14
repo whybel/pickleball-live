@@ -31,9 +31,7 @@ export default function StandingsPage() {
         .from("group_standings")
         .select("*, team:team_id(name)")
         .eq("competition_id", comp.id)
-        .order("group", { ascending: true })
-        .order("wins", { ascending: false }) // Sort by wins descending
-        .order("rank", { ascending: true });
+        .order("group", { ascending: true });
 
       const grouped: Record<string, any[]> = (standings || []).reduce((acc: any, item: any) => {
         if (!acc[item.group]) acc[item.group] = [];
@@ -41,11 +39,13 @@ export default function StandingsPage() {
         return acc;
       }, {});
 
-      // Sort each group by wins (descending) then by rank
+      // Sort each group by wins (descending), then by point differential
       Object.keys(grouped).forEach(group => {
         grouped[group].sort((a, b) => {
-          if (b.wins !== a.wins) return b.wins - a.wins; // Higher wins first
-          return (a.rank || 999) - (b.rank || 999); // Then by rank
+          if (b.wins !== a.wins) return b.wins - a.wins;
+          const aDiff = (a.points_for || 0) - (a.points_against || 0);
+          const bDiff = (b.points_for || 0) - (b.points_against || 0);
+          return bDiff - aDiff;
         });
       });
 
@@ -65,7 +65,7 @@ export default function StandingsPage() {
         <p style={{ color: '#888888', fontSize: '14px', margin: 0 }}>Round Robin Stage</p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '24px' }}>
         {Object.keys(groups).sort().map((group) => (
           <div key={group} style={{ background: '#111111', border: '1px solid #1a1a1a', borderRadius: '4px', overflow: 'hidden' }}>
             <div style={{ background: 'rgba(201, 169, 89, 0.15)', padding: '16px 20px', borderBottom: '2px solid #C9A959' }}>
@@ -73,16 +73,28 @@ export default function StandingsPage() {
                 GROUP {group}
               </h2>
             </div>
-            <div style={{ padding: '0' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 60px 60px 60px', fontSize: '11px', color: '#888888', textTransform: 'uppercase', letterSpacing: '1px', padding: '12px 20px', borderBottom: '1px solid #1a1a1a', background: '#0a0a0a' }}>
-                <div>RANK</div>
-                <div>TEAM</div>
-                <div style={{ textAlign: 'center' }}>MP</div>
-                <div style={{ textAlign: 'center' }}>W</div>
-                <div style={{ textAlign: 'center' }}>L</div>
-              </div>
+            
+            {/* Table Header */}
+            <div style={{ display: 'grid', gridTemplateColumns: '60px 1.5fr 50px 40px 40px', padding: '12px 20px', fontSize: '11px', color: '#888888', textTransform: 'uppercase', letterSpacing: '1px', borderBottom: '1px solid #1a1a1a', background: '#0a0a0a' }}>
+              <div style={{ textAlign: 'center' }}>Rank</div>
+              <div>Team</div>
+              <div style={{ textAlign: 'center' }}>MP</div>
+              <div style={{ textAlign: 'center' }}>W</div>
+              <div style={{ textAlign: 'center' }}>L</div>
+            </div>
+
+            {/* Table Rows */}
+            <div>
               {groups[group].map((team: any, index: number) => (
-                <div key={team.id} style={{ display: 'grid', gridTemplateColumns: '80px 1fr 60px 60px 60px', fontSize: '13px', padding: '14px 20px', borderBottom: '1px solid #1a1a1a', alignItems: 'center', background: index === 0 ? 'rgba(201, 169, 89, 0.05)' : 'transparent' }}>
+                <div key={team.id} style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: '60px 1.5fr 50px 40px 40px', 
+                  padding: '14px 20px', 
+                  fontSize: '13px',
+                  borderBottom: '1px solid #1a1a1a',
+                  alignItems: 'center',
+                  background: index === 0 ? 'rgba(201, 169, 89, 0.05)' : 'transparent'
+                }}>
                   <div style={{ textAlign: 'center' }}>
                     <span style={{ 
                       background: index === 0 ? '#C9A959' : '#1a1a1a', 
