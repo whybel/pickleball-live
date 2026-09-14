@@ -77,14 +77,95 @@ export default function AdminPage() {
     alert("Settings saved!");
   };
 
-  const updateScore = async (matchId: string, t1: number, t2: number, t1Id: string, t2Id: string) => {
-    const winner = t1 > t2 ? t1Id : t2Id;
-    await supabase.from("matches").update({ team1_score: t1, team2_score: t2, winner_id: winner, status: "completed" }).eq("id", matchId);
+  const updateLiveScore = async (matchId: string, t1: number, t2: number) => {
+    // Just update the score, keep status as "live" or "upcoming"
+    await supabase.from("matches").update({ 
+      team1_score: t1, 
+      team2_score: t2,
+      status: "live"
+    }).eq("id", matchId);
     fetchData();
+    alert("Live score updated!");
+  };
+
+  const completeMatch = async (matchId: string, t1: number, t2: number, t1Id: string, t2Id: string) => {
+    // Mark match as completed and determine winner
+    const winner = t1 > t2 ? t1Id : t2Id;
+    await supabase.from("matches").update({ 
+      team1_score: t1, 
+      team2_score: t2, 
+      winner_id: winner, 
+      status: "completed" 
+    }).eq("id", matchId);
+    
+    // Update standings
+    await updateStandings(matchId, t1, t2, t1Id, t2Id);
+    fetchData();
+  };
+
+  const updateStandings = async (matchId: string, t1: number, t2: number, t1Id: string, t2Id: string) => {
+    // Get the match details
+    const { data: match } = await supabase.from("matches").select("competition_id").eq("id", matchId).single();
+    if (!match) return;
+
+    // Update team 1 stats
+    const t1Win = t1 > t2 ? 1 : 0;
+    await supabase.rpc('update_team_standings', {
+      p_competition_id: match.competition_id,
+      p_team_id: t1Id,
+      p_wins: t1Win,
+      p_losses: t1 > t2 ? 0 : 1,
+      p_points_for: t1,
+      p_points_against: t2
+    });
+
+    // Update team 2 stats
+    const t2Win = t2 > t1 ? 1 : 0;
+    await supabase.rpc('update_team_standings', {
+      p_competition_id: match.competition_id,
+      p_team_id: t2Id,
+      p_wins: t2Win,
+      p_losses: t2 > t1 ? 0 : 1,
+      p_points_for: t2,
+      p_points_against: t1
+    });
   };
 
   const updateMatchDetails = async (id: string, field: string, value: any) => {
     await supabase.from("matches").update({ [field]: value }).eq("id", id);
+    fetchData();
+  };
+
+  const resetMatchScore = async (matchId: string) => {
+    if (!confirm("Reset this match score?")) return;
+    await supabase.from("matches").update({
+      team1_score: 0,
+      team2_score: 0,
+      winner_id: null,
+      status: "upcoming"
+    }).eq("id", matchId);
+    fetchData();
+  };
+
+  const resetAllScores = async () => {
+    if (!confirm("WARNING: This will reset ALL match scores in this competition. Are you sure?")) return;
+    await supabase.from("matches").update({
+      team1_score: 0,
+      team2_score: 0,
+      winner_id: null,
+      status: "upcoming"
+    }).eq("competition_id", currentCompId);
+    
+    // Clear standings
+    await supabase.from("group_standings").update({
+      matches_played: 0,
+      wins: 0,
+      losses: 0,
+      points_for: 0,
+      points_against: 0
+    }).eq("competition_id", currentCompId);
+    
+    alert("All scores reset successfully!");
     fetchData();
   };
 
@@ -110,7 +191,12 @@ export default function AdminPage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1a1a1a', paddingBottom: '16px' }}>
         <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#ffffff', margin: 0 }}>SCOREKEEPER DASHBOARD</h1>
-        <button onClick={() => setIsAuthenticated(false)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px' }}>Logout</button>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button onClick={resetAllScores} style={{ background: '#ef4444', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>
+            RESET ALL
+          </button>
+          <button onClick={() => setIsAuthenticated(false)} style={{ background: 'none', border: 'none', color: '#888888', cursor: 'pointer', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px' }}>Logout</button>
+        </div>
       </div>
 
       {/* Competition Manager */}
@@ -159,10 +245,20 @@ export default function AdminPage() {
           {matches.map((match: any) => (
             <div key={match.id} style={{ background: '#111111', border: '1px solid #1a1a1a', borderRadius: '4px', padding: '20px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <h3 style={{ margin: 0, color: 'white', fontSize: '16px' }}>Match #{match.match_number} <span style={{ color: '#888888', fontWeight: 'normal', fontSize: '14px' }}>({match.game_type})</span></h3>
-                <button onClick={() => setEditingId(editingId === match.id ? null : match.id)} style={{ background: '#1a1a1a', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', textTransform: 'uppercase' }}>
-                  {editingId === match.id ? 'Close' : 'Edit'}
-                </button>
+                <div>
+                  <h3 style={{ margin: 0, color: 'white', fontSize: '16px' }}>Match #{match.match_number} <span style={{ color: '#888888', fontWeight: 'normal', fontSize: '14px' }}>({match.game_type})</span></h3>
+                  <p style={{ margin: '4px 0 0 0', color: '#888888', fontSize: '12px' }}>{match.court} • {match.scheduled_time}</p>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {match.status === 'completed' && (
+                    <button onClick={() => resetMatchScore(match.id)} style={{ background: '#ef4444', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', textTransform: 'uppercase' }}>
+                      Reset
+                    </button>
+                  )}
+                  <button onClick={() => setEditingId(editingId === match.id ? null : match.id)} style={{ background: '#1a1a1a', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', textTransform: 'uppercase' }}>
+                    {editingId === match.id ? 'Close' : 'Edit'}
+                  </button>
+                </div>
               </div>
 
               {editingId === match.id && (
@@ -199,30 +295,56 @@ export default function AdminPage() {
               )}
 
               {match.team1_id && match.status !== 'completed' && (
-                <div style={{ background: '#0a0a0a', padding: '16px', borderRadius: '4px', border: '1px solid #1a1a1a', display: 'flex', alignItems: 'center', gap: '16px' }}>
-                  <div style={{ flex: 1, textAlign: 'center' }}>
-                    <p style={{ fontSize: '12px', color: '#888888', marginBottom: '8px', margin: '0 0 8px 0' }}>{match.team1?.name}</p>
-                    <input type="number" id={`t1-${match.id}`} placeholder="0" style={{ width: '80px', padding: '12px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', fontSize: '20px', fontWeight: 'bold', textAlign: 'center', borderRadius: '4px' }} />
+                <div style={{ background: '#0a0a0a', padding: '16px', borderRadius: '4px', border: '1px solid #1a1a1a', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                    <div style={{ flex: 1, textAlign: 'center' }}>
+                      <p style={{ fontSize: '12px', color: '#888888', marginBottom: '8px', margin: '0 0 8px 0' }}>{match.team1?.name}</p>
+                      <input type="number" id={`t1-${match.id}`} placeholder="0" defaultValue={match.team1_score || 0} style={{ width: '80px', padding: '12px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', fontSize: '20px', fontWeight: 'bold', textAlign: 'center', borderRadius: '4px' }} />
+                    </div>
+                    <span style={{ color: '#888888', fontWeight: 'bold', fontSize: '20px' }}>VS</span>
+                    <div style={{ flex: 1, textAlign: 'center' }}>
+                      <p style={{ fontSize: '12px', color: '#888888', marginBottom: '8px', margin: '0 0 8px 0' }}>{match.team2?.name}</p>
+                      <input type="number" id={`t2-${match.id}`} placeholder="0" defaultValue={match.team2_score || 0} style={{ width: '80px', padding: '12px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', fontSize: '20px', fontWeight: 'bold', textAlign: 'center', borderRadius: '4px' }} />
+                    </div>
                   </div>
-                  <span style={{ color: '#888888', fontWeight: 'bold', fontSize: '20px' }}>VS</span>
-                  <div style={{ flex: 1, textAlign: 'center' }}>
-                    <p style={{ fontSize: '12px', color: '#888888', marginBottom: '8px', margin: '0 0 8px 0' }}>{match.team2?.name}</p>
-                    <input type="number" id={`t2-${match.id}`} placeholder="0" style={{ width: '80px', padding: '12px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', fontSize: '20px', fontWeight: 'bold', textAlign: 'center', borderRadius: '4px' }} />
+                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                    <button 
+                      onClick={() => {
+                        const s1 = parseInt((document.getElementById(`t1-${match.id}`) as HTMLInputElement).value);
+                        const s2 = parseInt((document.getElementById(`t2-${match.id}`) as HTMLInputElement).value);
+                        if(!isNaN(s1) && !isNaN(s2)) updateLiveScore(match.id, s1, s2);
+                      }}
+                      style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', textTransform: 'uppercase', fontSize: '12px', flex: 1 }}
+                    >Update Live Score</button>
+                    <button 
+                      onClick={() => {
+                        const s1 = parseInt((document.getElementById(`t1-${match.id}`) as HTMLInputElement).value);
+                        const s2 = parseInt((document.getElementById(`t2-${match.id}`) as HTMLInputElement).value);
+                        if(!isNaN(s1) && !isNaN(s2)) completeMatch(match.id, s1, s2, match.team1_id, match.team2_id);
+                      }}
+                      style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '12px 24px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', textTransform: 'uppercase', fontSize: '12px', flex: 1 }}
+                    >Complete Match</button>
                   </div>
-                  <button 
-                    onClick={() => {
-                      const s1 = parseInt((document.getElementById(`t1-${match.id}`) as HTMLInputElement).value);
-                      const s2 = parseInt((document.getElementById(`t2-${match.id}`) as HTMLInputElement).value);
-                      if(!isNaN(s1) && !isNaN(s2)) updateScore(match.id, s1, s2, match.team1_id, match.team2_id);
-                    }}
-                    style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '12px 24px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', textTransform: 'uppercase', fontSize: '12px' }}
-                  >Save</button>
                 </div>
               )}
               
               {match.status === 'completed' && (
-                <div style={{ textAlign: 'center', padding: '12px', background: '#0a0a0a', borderRadius: '4px', border: '1px solid #1a1a1a', color: '#C9A959', fontWeight: 'bold', marginTop: '16px' }}>
-                  Completed: {match.team1_score} - {match.team2_score}
+                <div style={{ textAlign: 'center', padding: '16px', background: '#0a0a0a', borderRadius: '4px', border: '1px solid #1a1a1a' }}>
+                  <div style={{ color: '#C9A959', fontWeight: 'bold', fontSize: '18px', marginBottom: '8px' }}>
+                    COMPLETED
+                  </div>
+                  <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ffffff' }}>
+                    {match.team1_score} - {match.team2_score}
+                  </div>
+                  <div style={{ marginTop: '8px', color: '#22c55e', fontSize: '14px' }}>
+                    Winner: {match.winner_id === match.team1_id ? match.team1?.name : match.team2?.name}
+                  </div>
+                </div>
+              )}
+              
+              {match.status === 'live' && (
+                <div style={{ textAlign: 'center', padding: '8px', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '4px', border: '1px solid #3b82f6', color: '#3b82f6', fontWeight: 'bold', fontSize: '12px', textTransform: 'uppercase' }}>
+                  LIVE - Current Score: {match.team1_score} - {match.team2_score}
                 </div>
               )}
             </div>
