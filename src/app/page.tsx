@@ -8,7 +8,6 @@ export default function Home() {
   const [selectedTeam, setSelectedTeam] = useState<string>("All Teams");
   const [loading, setLoading] = useState(true);
 
-  // 1. Initial Data Fetch
   useEffect(() => {
     const fetchData = async () => {
       const { data: m } = await supabase.from("matches").select("*, team1:team1_id(name), team2:team2_id(name)").order("match_number");
@@ -19,7 +18,6 @@ export default function Home() {
     };
     fetchData();
 
-    // 2. REALTIME SUBSCRIPTION (The Magic)
     const channel = supabase
       .channel("public:matches")
       .on("postgres_changes", { event: "*", schema: "public", table: "matches" }, (payload) => {
@@ -28,8 +26,6 @@ export default function Home() {
             return [...currentMatches, payload.new];
           } else if (payload.eventType === "UPDATE") {
             return currentMatches.map((m) => (m.id === payload.new.id ? { ...m, ...payload.new } : m));
-          } else if (payload.eventType === "DELETE") {
-            return currentMatches.filter((m) => m.id !== payload.old.id);
           }
           return currentMatches;
         });
@@ -39,87 +35,89 @@ export default function Home() {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  // Filter matches based on "Follow Team"
   const filteredMatches = selectedTeam === "All Teams" 
     ? matches 
     : matches.filter(m => m.team1?.name === selectedTeam || m.team2?.name === selectedTeam);
 
-  if (loading) return <div className="text-center py-20 text-amber-400 animate-pulse">Loading Live Scores...</div>;
+  if (loading) return <div style={{textAlign: 'center', padding: '40px', color: '#fbbf24'}}>Loading...</div>;
 
   return (
-    <div className="space-y-8">
-      {/* Follow Team Filter */}
-      <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-lg">
-        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Follow Your Team</label>
+    <div style={{maxWidth: '800px', margin: '0 auto', padding: '20px'}}>
+      {/* Header */}
+      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', borderBottom: '2px solid #334155', paddingBottom: '20px'}}>
+        <div>
+          <h1 style={{fontSize: '2rem', fontWeight: 'bold', color: '#fbbf24', margin: 0}}>AIWM</h1>
+          <p style={{margin: '5px 0 0 0', color: '#94a3b8', fontSize: '0.9rem'}}>Charity Pickleball Tournament</p>
+        </div>
+        <a href="/admin" style={{background: '#334155', color: 'white', padding: '8px 16px', borderRadius: '20px', textDecoration: 'none', fontSize: '0.85rem'}}>Admin</a>
+      </div>
+
+      {/* Team Filter */}
+      <div className="match-card">
+        <label style={{display: 'block', marginBottom: '8px', color: '#94a3b8', fontSize: '0.85rem', fontWeight: '600'}}>FOLLOW YOUR TEAM</label>
         <select 
           value={selectedTeam} 
           onChange={(e) => setSelectedTeam(e.target.value)}
-          className="w-full bg-slate-800 text-white border border-slate-700 rounded-lg p-3 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+          style={{width: '100%', padding: '12px', background: '#0f172a', border: '1px solid #334155', color: 'white', borderRadius: '8px', fontSize: '1rem'}}
         >
           <option value="All Teams">Show All Matches</option>
           {teams.map((t: any) => <option key={t.id} value={t.name}>{t.name}</option>)}
         </select>
       </div>
 
-      {/* Live Matches Section */}
-      <section>
-        <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-          <span className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></span> 
-          Live & Upcoming Matches
-        </h2>
-        <div className="space-y-4">
-          {filteredMatches.map((match: any) => (
-            <div key={match.id} className={`bg-slate-900 p-5 rounded-xl border ${match.status === 'live' ? 'border-amber-500/50 shadow-amber-500/10 shadow-lg' : 'border-slate-800'} transition-all`}>
-              <div className="flex justify-between items-center mb-4">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{match.court} • {match.scheduled_time}</span>
-                <span className="text-xs font-bold text-amber-400 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20">{match.game_type}</span>
-              </div>
-              
-              <div className="flex justify-between items-center">
-                {/* Team 1 */}
-                <div className="flex-1">
-                  <p className={`font-bold text-lg ${match.winner_id === match.team1_id ? 'text-amber-400' : 'text-slate-200'}`}>
-                    {match.team1?.name || 'TBD'}
-                  </p>
-                </div>
-                
-                {/* Score */}
-                <div className="px-6 text-center">
-                  {match.status === 'completed' ? (
-                    <div className="text-4xl font-black text-white tracking-tighter">
-                      {match.team1_score} - {match.team2_score}
-                    </div>
-                  ) : match.status === 'live' ? (
-                    <div className="text-4xl font-black text-amber-400 tracking-tighter animate-pulse">
-                      {match.team1_score} - {match.team2_score}
-                    </div>
-                  ) : (
-                    <div className="text-sm font-bold text-slate-500 bg-slate-800 px-4 py-1 rounded">VS</div>
-                  )}
-                </div>
+      {/* Matches */}
+      <h2 style={{fontSize: '1.3rem', fontWeight: 'bold', marginBottom: '20px', color: 'white'}}>
+        <span style={{display: 'inline-block', width: '10px', height: '10px', background: '#ef4444', borderRadius: '50%', marginRight: '8px', animation: 'pulse 2s infinite'}}></span>
+        Live & Upcoming Matches
+      </h2>
 
-                {/* Team 2 */}
-                <div className="flex-1 text-right">
-                  <p className={`font-bold text-lg ${match.winner_id === match.team2_id ? 'text-amber-400' : 'text-slate-200'}`}>
-                    {match.team2?.name || 'TBD'}
-                  </p>
-                </div>
+      {filteredMatches.map((match: any) => (
+        <div key={match.id} className="match-card">
+          <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '15px', fontSize: '0.85rem', color: '#94a3b8'}}>
+            <span>{match.court} • {match.scheduled_time}</span>
+            <span className="badge">{match.game_type}</span>
+          </div>
+          
+          <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+            <div style={{flex: 1}}>
+              <div className={`team-name ${match.winner_id === match.team1_id ? 'winner' : ''}`}>
+                {match.team1?.name || 'TBD'}
               </div>
-
-              {match.status === 'completed' && (
-                <div className="mt-4 pt-3 border-t border-slate-800 text-center">
-                  <span className="text-xs font-bold text-emerald-400 uppercase tracking-widest">
-                    Winner: {match.winner_id === match.team1_id ? match.team1?.name : match.team2?.name}
-                  </span>
-                </div>
+            </div>
+            
+            <div className="score-display">
+              {match.status === 'completed' || match.status === 'live' ? (
+                `${match.team1_score} - ${match.team2_score}`
+              ) : (
+                <span style={{fontSize: '1rem', color: '#64748b'}}>VS</span>
               )}
             </div>
-          ))}
-          {filteredMatches.length === 0 && (
-            <p className="text-center text-slate-500 py-10">No matches found for this team.</p>
+
+            <div style={{flex: 1, textAlign: 'right'}}>
+              <div className={`team-name ${match.winner_id === match.team2_id ? 'winner' : ''}`}>
+                {match.team2?.name || 'TBD'}
+              </div>
+            </div>
+          </div>
+
+          {match.status === 'completed' && (
+            <div style={{marginTop: '15px', paddingTop: '15px', borderTop: '1px solid #334155', textAlign: 'center', color: '#22c55e', fontWeight: '700', fontSize: '0.9rem'}}>
+              WINNER: {(match.winner_id === match.team1_id ? match.team1?.name : match.team2?.name)?.toUpperCase()}
+            </div>
           )}
         </div>
-      </section>
+      ))}
+
+      {filteredMatches.length === 0 && (
+        <div style={{textAlign: 'center', padding: '40px', color: '#64748b'}}>No matches found for this team.</div>
+      )}
+
+      <style jsx global>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+      `}</style>
     </div>
   );
 }

@@ -38,80 +38,84 @@ export default function AdminPage() {
 
   if (!isAuthenticated) {
     return (
-      <div className="flex flex-col items-center justify-center h-[60vh] space-y-6">
-        <h1 className="text-3xl font-bold text-white">Admin Access</h1>
+      <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', padding: '20px'}}>
+        <h1 style={{fontSize: '2rem', fontWeight: 'bold', marginBottom: '30px', color: '#fbbf24'}}>Admin Access</h1>
         <input 
-          type="password" placeholder="Enter Passcode" value={passcode}
-          onChange={(e) => setPasscode(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
-          className="bg-slate-800 border border-slate-700 text-white p-4 rounded-lg w-72 text-center focus:ring-2 focus:ring-amber-500 outline-none"
+          type="password" 
+          placeholder="Enter Passcode" 
+          value={passcode}
+          onChange={(e) => setPasscode(e.target.value)} 
+          onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+          style={{padding: '15px', fontSize: '1rem', border: '1px solid #334155', borderRadius: '8px', background: '#1e293b', color: 'white', width: '100%', maxWidth: '300px', marginBottom: '20px'}}
         />
-        <button onClick={handleLogin} className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-8 py-3 rounded-lg transition">Unlock</button>
+        <button onClick={handleLogin} style={{background: '#fbbf24', color: '#0f172a', border: 'none', padding: '15px 40px', borderRadius: '8px', fontWeight: 'bold', fontSize: '1rem', cursor: 'pointer'}}>
+          Unlock Dashboard
+        </button>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8">
-      <div className="flex justify-between items-center border-b border-slate-800 pb-4">
-        <h1 className="text-2xl font-bold text-white">Scorekeeper Dashboard</h1>
-        <button onClick={() => setIsAuthenticated(false)} className="text-sm text-red-400 hover:text-red-300">Logout</button>
+    <div style={{maxWidth: '800px', margin: '0 auto', padding: '20px'}}>
+      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', borderBottom: '2px solid #334155', paddingBottom: '20px'}}>
+        <h1 style={{fontSize: '1.8rem', fontWeight: 'bold', color: '#fbbf24', margin: 0}}>Scorekeeper Dashboard</h1>
+        <button onClick={() => setIsAuthenticated(false)} style={{background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.9rem'}}>Logout</button>
       </div>
       
-      {/* Matches List with Edit Capabilities */}
-      <section className="space-y-4">
-        <h2 className="text-lg font-bold text-amber-400">Manage Matches</h2>
-        {matches.map((match: any) => (
-          <div key={match.id} className="bg-slate-900 p-4 rounded-xl border border-slate-800">
-            <div className="flex justify-between items-center mb-3">
-              <span className="font-bold text-white">Match #{match.match_number} <span className="text-slate-500 font-normal">({match.game_type})</span></span>
-              <button onClick={() => setEditingId(editingId === match.id ? null : match.id)} className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1 rounded">
-                {editingId === match.id ? 'Close' : 'Edit Details'}
-              </button>
-            </div>
+      {matches.map((match: any) => (
+        <div key={match.id} className="match-card">
+          <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px'}}>
+            <h3 style={{margin: 0, color: 'white'}}>Match #{match.match_number} <span style={{color: '#64748b', fontWeight: 'normal'}}>({match.game_type})</span></h3>
+            <button 
+              onClick={() => setEditingId(editingId === match.id ? null : match.id)} 
+              style={{background: '#334155', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem'}}
+            >
+              {editingId === match.id ? 'Close' : 'Edit'}
+            </button>
+          </div>
 
-            {/* Edit Mode */}
-            {editingId === match.id && (
-              <div className="bg-slate-800/50 p-3 rounded-lg mb-4 space-y-3 border border-slate-700">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs text-slate-400 block mb-1">Time</label>
-                    <input defaultValue={match.scheduled_time} onBlur={(e) => updateMatchDetails(match.id, 'scheduled_time', e.target.value)} className="w-full bg-slate-900 border border-slate-700 text-white p-2 rounded text-sm" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-slate-400 block mb-1">Court</label>
-                    <input defaultValue={match.court} onBlur={(e) => updateMatchDetails(match.id, 'court', e.target.value)} className="w-full bg-slate-900 border border-slate-700 text-white p-2 rounded text-sm" />
-                  </div>
+          {editingId === match.id && (
+            <div style={{background: '#0f172a', padding: '15px', borderRadius: '8px', marginBottom: '15px', border: '1px solid #334155'}}>
+              <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px'}}>
+                <div>
+                  <label style={{display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '5px'}}>Time</label>
+                  <input defaultValue={match.scheduled_time} onBlur={(e) => updateMatchDetails(match.id, 'scheduled_time', e.target.value)} style={{width: '100%', padding: '8px', background: '#1e293b', border: '1px solid #334155', color: 'white', borderRadius: '6px'}} />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs text-slate-400 block mb-1">Team 1</label>
-                    <select defaultValue={match.team1_id} onChange={(e) => updateMatchDetails(match.id, 'team1_id', e.target.value)} className="w-full bg-slate-900 border border-slate-700 text-white p-2 rounded text-sm">
-                      <option value="">Select Team</option>
-                      {teams.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs text-slate-400 block mb-1">Team 2</label>
-                    <select defaultValue={match.team2_id} onChange={(e) => updateMatchDetails(match.id, 'team2_id', e.target.value)} className="w-full bg-slate-900 border border-slate-700 text-white p-2 rounded text-sm">
-                      <option value="">Select Team</option>
-                      {teams.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                    </select>
-                  </div>
+                <div>
+                  <label style={{display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '5px'}}>Court</label>
+                  <input defaultValue={match.court} onBlur={(e) => updateMatchDetails(match.id, 'court', e.target.value)} style={{width: '100%', padding: '8px', background: '#1e293b', border: '1px solid #334155', color: 'white', borderRadius: '6px'}} />
                 </div>
               </div>
-            )}
-
-            {/* Scoring Mode */}
-            {match.team1_id && match.status !== 'completed' && (
-              <div className="flex gap-3 items-center bg-slate-800/30 p-3 rounded-lg">
-                <div className="flex-1 text-center">
-                  <p className="text-xs text-slate-400 mb-1">{match.team1?.name}</p>
-                  <input type="number" id={`t1-${match.id}`} placeholder="0" className="w-16 bg-slate-900 border border-slate-700 text-white text-2xl font-bold p-2 rounded text-center mx-auto block" />
+              <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px'}}>
+                <div>
+                  <label style={{display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '5px'}}>Team 1</label>
+                  <select defaultValue={match.team1_id} onChange={(e) => updateMatchDetails(match.id, 'team1_id', e.target.value)} style={{width: '100%', padding: '8px', background: '#1e293b', border: '1px solid #334155', color: 'white', borderRadius: '6px'}}>
+                    <option value="">Select Team</option>
+                    {teams.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
                 </div>
-                <span className="text-slate-600 font-bold">VS</span>
-                <div className="flex-1 text-center">
-                  <p className="text-xs text-slate-400 mb-1">{match.team2?.name}</p>
-                  <input type="number" id={`t2-${match.id}`} placeholder="0" className="w-16 bg-slate-900 border border-slate-700 text-white text-2xl font-bold p-2 rounded text-center mx-auto block" />
+                <div>
+                  <label style={{display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '5px'}}>Team 2</label>
+                  <select defaultValue={match.team2_id} onChange={(e) => updateMatchDetails(match.id, 'team2_id', e.target.value)} style={{width: '100%', padding: '8px', background: '#1e293b', border: '1px solid #334155', color: 'white', borderRadius: '6px'}}>
+                    <option value="">Select Team</option>
+                    {teams.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {match.team1_id && match.status !== 'completed' && (
+            <div style={{background: '#0f172a', padding: '15px', borderRadius: '8px', border: '1px solid #334155'}}>
+              <div style={{display: 'flex', alignItems: 'center', gap: '15px'}}>
+                <div style={{flex: 1, textAlign: 'center'}}>
+                  <p style={{fontSize: '0.8rem', color: '#94a3b8', marginBottom: '8px'}}>{match.team1?.name}</p>
+                  <input type="number" id={`t1-${match.id}`} placeholder="0" style={{width: '80px', padding: '10px', background: '#1e293b', border: '1px solid #334155', color: 'white', fontSize: '1.5rem', fontWeight: 'bold', textAlign: 'center', borderRadius: '6px'}} />
+                </div>
+                <span style={{color: '#64748b', fontWeight: 'bold'}}>VS</span>
+                <div style={{flex: 1, textAlign: 'center'}}>
+                  <p style={{fontSize: '0.8rem', color: '#94a3b8', marginBottom: '8px'}}>{match.team2?.name}</p>
+                  <input type="number" id={`t2-${match.id}`} placeholder="0" style={{width: '80px', padding: '10px', background: '#1e293b', border: '1px solid #334155', color: 'white', fontSize: '1.5rem', fontWeight: 'bold', textAlign: 'center', borderRadius: '6px'}} />
                 </div>
                 <button 
                   onClick={() => {
@@ -119,14 +123,18 @@ export default function AdminPage() {
                     const s2 = parseInt((document.getElementById(`t2-${match.id}`) as HTMLInputElement).value);
                     if(!isNaN(s1) && !isNaN(s2)) updateScore(match.id, s1, s2, match.team1_id, match.team2_id);
                   }}
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded font-bold transition"
+                  style={{background: '#22c55e', color: 'white', border: 'none', padding: '12px 20px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer'}}
                 >Save</button>
               </div>
-            )}
-            {match.status === 'completed' && <div className="text-center text-emerald-400 text-sm font-bold mt-2">Completed: {match.team1_score} - {match.team2_score}</div>}
-          </div>
-        ))}
-      </section>
+            </div>
+          )}
+          {match.status === 'completed' && (
+            <div style={{textAlign: 'center', padding: '10px', background: '#0f172a', borderRadius: '6px', color: '#22c55e', fontWeight: 'bold', marginTop: '10px'}}>
+              Completed: {match.team1_score} - {match.team2_score}
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

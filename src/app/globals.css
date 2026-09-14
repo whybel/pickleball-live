@@ -2,31 +2,44 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --foreground-rgb: 255, 255, 255;
-  --background-start-rgb: 15, 23, 42; /* Slate 900 */
-  --background-end-rgb: 2, 6, 23;     /* Slate 950 */
-}
-
 body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
-  min-height: 100vh;
+  background: #0f172a;
+  color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
-/* Custom Scrollbar for Dark Mode */
-::-webkit-scrollbar {
-  width: 8px;
+.match-card {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 16px;
 }
-::-webkit-scrollbar-track {
-  background: #0f172a; 
+
+.score-display {
+  font-size: 2rem;
+  font-weight: 800;
+  color: #fbbf24;
+  text-align: center;
+  padding: 10px 20px;
 }
-::-webkit-scrollbar-thumb {
-  background: #334155; 
-  border-radius: 4px;
+
+.team-name {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.winner {
+  color: #fbbf24;
+}
+
+.badge {
+  background: rgba(251, 191, 36, 0.2);
+  color: #fbbf24;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
 }
