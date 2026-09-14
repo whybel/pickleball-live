@@ -42,11 +42,11 @@ export default function BracketPage() {
                 <div key={match.id} style={{ background: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: '4px', padding: '16px' }}>
                   <div style={{ fontSize: '12px', color: '#888888', marginBottom: '12px' }}>Match #{match.match_number} • {match.category} • {match.court}</div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                    <span style={{ fontSize: '14px', fontWeight: '600', color: match.winner_id === match.team1_id ? '#C9A959' : '#ffffff' }}>{match.team1?.name || 'TBD'}</span>
+                    <span style={{ fontSize: '14px', fontWeight: '600', color: match.winner_id === match.team1_id ? '#C9A959' : '#ffffff' }}>{match.team1_custom_name || match.team1?.name || 'TBD'}</span>
                     <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>{match.status === 'completed' ? match.team1_score : '-'}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '14px', fontWeight: '600', color: match.winner_id === match.team2_id ? '#C9A959' : '#ffffff' }}>{match.team2?.name || 'TBD'}</span>
+                    <span style={{ fontSize: '14px', fontWeight: '600', color: match.winner_id === match.team2_id ? '#C9A959' : '#ffffff' }}>{match.team2_custom_name || match.team2?.name || 'TBD'}</span>
                     <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>{match.status === 'completed' ? match.team2_score : '-'}</span>
                   </div>
                   {match.status === 'completed' && (

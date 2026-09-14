@@ -11,18 +11,18 @@ export default function AdminPage() {
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [currentCompId, setCurrentCompId] = useState<string>("");
   
-  // Display Settings State
   const [showTeamName, setShowTeamName] = useState(true);
   const [showPlayerName, setShowPlayerName] = useState(true);
 
-  // Add Match Form State
   const [newMatchType, setNewMatchType] = useState<'group' | 'knockout'>('knockout');
   const [newMatchRound, setNewMatchRound] = useState("Semi-Final");
   const [newMatchCategory, setNewMatchCategory] = useState("Doubles");
   const [newMatchCourt, setNewMatchCourt] = useState("Court 1");
   const [newMatchTime, setNewMatchTime] = useState("4:30 PM");
 
+  // Dynamic categories for knockout generation
   const categories = ["Singles", "Doubles", "Men's Singles", "Men's Doubles", "Women's Singles", "Women's Doubles", "Mixed Doubles"];
+  const [selectedKnockoutCategories, setSelectedKnockoutCategories] = useState<string[]>(["Singles", "Doubles"]);
   const knockoutRounds = ["R128", "R64", "R32", "R16", "Quarter-Final", "Semi-Final", "Final"];
 
   useEffect(() => {
@@ -100,13 +100,14 @@ export default function AdminPage() {
   };
 
   const generateKnockoutStage = async () => {
-    if (!confirm("This will create 6 Knockout Matches (2 SF, 1 Final per category). Continue?")) return;
+    if (selectedKnockoutCategories.length === 0) return alert("Please select at least one category.");
+    if (!confirm(`This will create Knockout Matches (2 SF, 1 Final) for: ${selectedKnockoutCategories.join(', ')}. Continue?`)) return;
+    
     const maxMatchNum = matches.length > 0 ? Math.max(...matches.map(m => m.match_number)) : 0;
     let currentNum = maxMatchNum + 1;
     const newMatches = [];
-    const cats = ["Singles", "Doubles"]; 
     
-    for (const cat of cats) {
+    for (const cat of selectedKnockoutCategories) {
       newMatches.push({ competition_id: currentCompId, match_number: currentNum++, is_knockout: true, knockout_round: 'Semi-Final', round: 'Semi-Final', category: cat, court: 'TBD', scheduled_time: 'TBD', game_type: 'TBD', status: 'upcoming', team1_score: 0, team2_score: 0, team1_players: '', team2_players: '' });
       newMatches.push({ competition_id: currentCompId, match_number: currentNum++, is_knockout: true, knockout_round: 'Semi-Final', round: 'Semi-Final', category: cat, court: 'TBD', scheduled_time: 'TBD', game_type: 'TBD', status: 'upcoming', team1_score: 0, team2_score: 0, team1_players: '', team2_players: '' });
       newMatches.push({ competition_id: currentCompId, match_number: currentNum++, is_knockout: true, knockout_round: 'Final', round: 'Final', category: cat, court: 'TBD', scheduled_time: 'TBD', game_type: 'TBD', status: 'upcoming', team1_score: 0, team2_score: 0, team1_players: '', team2_players: '' });
@@ -126,6 +127,40 @@ export default function AdminPage() {
   const groupMatches = matches.filter(m => !m.is_knockout);
   const knockoutMatches = matches.filter(m => m.is_knockout);
 
+  // Helper component for Team Selection with Custom Override
+  const TeamSelect = ({ matchId, teamId, customName, teamNum, teamsList }: any) => {
+    const isCustom = teamId === 'custom' || customName;
+    return (
+      <div>
+        <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '4px' }}>Team {teamNum}</label>
+        <select 
+          value={teamId || (customName ? 'custom' : '')} 
+          onChange={(e) => {
+            if (e.target.value === 'custom') {
+              updateMatch(matchId, `team${teamNum}_id`, null);
+            } else {
+              updateMatch(matchId, `team${teamNum}_id`, e.target.value || null);
+              updateMatch(matchId, `team${teamNum}_custom_name`, '');
+            }
+          }} 
+          style={{ width: '100%', padding: '8px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', marginBottom: isCustom ? '8px' : '0' }}
+        >
+          <option value="">Select Team</option>
+          {teamsList.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          <option value="custom">-- Type Custom Name (e.g. Group A Winner) --</option>
+        </select>
+        {isCustom && (
+          <input 
+            value={customName || ''} 
+            onChange={(e) => updateMatch(matchId, `team${teamNum}_custom_name`, e.target.value)} 
+            placeholder="Enter custom name..." 
+            style={{ width: '100%', padding: '8px', background: '#111111', border: '1px solid #C9A959', color: 'white', borderRadius: '4px', boxSizing: 'border-box' }} 
+          />
+        )}
+      </div>
+    );
+  };
+
   if (!isAuthenticated) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
@@ -143,25 +178,41 @@ export default function AdminPage() {
         <button onClick={() => setIsAuthenticated(false)} style={{ background: 'none', border: 'none', color: '#888888', cursor: 'pointer', fontSize: '12px', textTransform: 'uppercase' }}>Logout</button>
       </div>
 
-      {/* LIVE DISPLAY SETTINGS */}
       <div style={{ background: '#111111', border: '1px solid #1a1a1a', borderRadius: '4px', padding: '24px' }}>
         <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '16px' }}>Live Screen Display Settings</h2>
         <div style={{ display: 'flex', gap: '24px', alignItems: 'center', flexWrap: 'wrap' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#ffffff', cursor: 'pointer' }}>
-            <input type="checkbox" checked={showTeamName} onChange={(e) => setShowTeamName(e.target.checked)} style={{ width: '18px', height: '18px' }} />
-            Show Team Name
+            <input type="checkbox" checked={showTeamName} onChange={(e) => setShowTeamName(e.target.checked)} style={{ width: '18px', height: '18px' }} /> Show Team Name
           </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#ffffff', cursor: 'pointer' }}>
-            <input type="checkbox" checked={showPlayerName} onChange={(e) => setShowPlayerName(e.target.checked)} style={{ width: '18px', height: '18px' }} />
-            Show Player/s Name
+            <input type="checkbox" checked={showPlayerName} onChange={(e) => setShowPlayerName(e.target.checked)} style={{ width: '18px', height: '18px' }} /> Show Player/s Name
           </label>
           <button onClick={saveDisplaySettings} style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Save Settings</button>
         </div>
       </div>
 
-      {/* KNOCKOUT GENERATOR & ADD MATCH */}
       <div style={{ background: '#111111', border: '1px solid #C9A959', borderRadius: '4px', padding: '24px' }}>
-        <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '16px' }}>🏆 Knockout Stage Manager</h2>
+        <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '16px' }}>Knockout Stage Manager</h2>
+        
+        {/* Dynamic Category Selection */}
+        <div style={{ marginBottom: '20px', display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ color: '#888888', fontSize: '12px', textTransform: 'uppercase' }}>Categories to Generate:</span>
+          {categories.map(cat => (
+            <label key={cat} style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#ffffff', cursor: 'pointer', fontSize: '12px' }}>
+              <input
+                type="checkbox"
+                checked={selectedKnockoutCategories.includes(cat)}
+                onChange={(e) => {
+                  if (e.target.checked) setSelectedKnockoutCategories([...selectedKnockoutCategories, cat]);
+                  else setSelectedKnockoutCategories(selectedKnockoutCategories.filter(c => c !== cat));
+                }}
+                style={{ width: '14px', height: '14px' }}
+              />
+              {cat}
+            </label>
+          ))}
+        </div>
+
         <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
           <button onClick={generateKnockoutStage} style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '12px 24px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Auto-Generate SF & Finals</button>
         </div>
@@ -188,13 +239,11 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* GROUP MATCHES */}
       <div>
         <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#ffffff', marginBottom: '16px' }}>Group Stage Matches ({groupMatches.length})</h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {groupMatches.map((match: any) => (
             <div key={match.id} style={{ background: '#111111', border: '1px solid #1a1a1a', borderRadius: '4px', padding: '16px' }}>
-              {/* Header with Actions */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                 <span style={{ color: '#C9A959', fontWeight: 'bold' }}>Match #{match.match_number} ({match.category})</span>
                 <div style={{ display: 'flex', gap: '8px' }}>
@@ -204,7 +253,6 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              {/* Edit Form */}
               {editingId === match.id && (
                 <div style={{ background: '#0a0a0a', padding: '16px', borderRadius: '4px', marginBottom: '12px', border: '1px solid #1a1a1a', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div>
@@ -221,20 +269,8 @@ export default function AdminPage() {
                       {categories.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '4px' }}>Team 1</label>
-                    <select defaultValue={match.team1_id} onChange={(e) => updateMatch(match.id, 'team1_id', e.target.value)} style={{ width: '100%', padding: '8px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
-                      <option value="">Select Team</option>
-                      {teams.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '4px' }}>Team 2</label>
-                    <select defaultValue={match.team2_id} onChange={(e) => updateMatch(match.id, 'team2_id', e.target.value)} style={{ width: '100%', padding: '8px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
-                      <option value="">Select Team</option>
-                      {teams.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                    </select>
-                  </div>
+                  <TeamSelect matchId={match.id} teamId={match.team1_id} customName={match.team1_custom_name} teamNum={1} teamsList={teams} />
+                  <TeamSelect matchId={match.id} teamId={match.team2_id} customName={match.team2_custom_name} teamNum={2} teamsList={teams} />
                   <div>
                     <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '4px' }}>Player/s Name (Team 1)</label>
                     <input defaultValue={match.team1_players || ''} onBlur={(e) => updateMatch(match.id, 'team1_players', e.target.value)} placeholder="e.g. Doubles 1" style={{ width: '100%', padding: '8px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', boxSizing: 'border-box' }} />
@@ -246,30 +282,28 @@ export default function AdminPage() {
                 </div>
               )}
 
-              {/* Scoring Area */}
-              {match.team1_id && match.status !== 'completed' && (
+              {match.status !== 'completed' && (
                 <div style={{ display: 'flex', gap: '16px', alignItems: 'center', justifyContent: 'center', marginTop: '16px' }}>
                   <div style={{ flex: 1, textAlign: 'center' }}>
-                    <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>{match.team1?.name}</div>
+                    <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>{match.team1_custom_name || match.team1?.name || 'TBD'}</div>
                     <div style={{ fontSize: '12px', color: '#888888', marginTop: '4px' }}>Player/s: {match.team1_players || '-'}</div>
                     <input type="number" id={`t1-${match.id}`} defaultValue={match.team1_score || 0} style={{ width: '60px', padding: '8px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', textAlign: 'center', marginTop: '8px' }} />
                   </div>
                   <span style={{ color: '#888888', fontWeight: 'bold' }}>VS</span>
                   <div style={{ flex: 1, textAlign: 'center' }}>
-                    <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>{match.team2?.name}</div>
+                    <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>{match.team2_custom_name || match.team2?.name || 'TBD'}</div>
                     <div style={{ fontSize: '12px', color: '#888888', marginTop: '4px' }}>Player/s: {match.team2_players || '-'}</div>
                     <input type="number" id={`t2-${match.id}`} defaultValue={match.team2_score || 0} style={{ width: '60px', padding: '8px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', textAlign: 'center', marginTop: '8px' }} />
                   </div>
                   <button onClick={() => { const s1 = parseInt((document.getElementById(`t1-${match.id}`) as HTMLInputElement).value); const s2 = parseInt((document.getElementById(`t2-${match.id}`) as HTMLInputElement).value); if(!isNaN(s1) && !isNaN(s2)) completeMatch(match.id, s1, s2, match.team1_id, match.team2_id); }} style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Complete</button>
                 </div>
               )}
-              {match.status === 'completed' && <div style={{ color: '#22c55e', fontSize: '14px', marginTop: '12px', textAlign: 'center' }}>Completed: {match.team1_score} - {match.team2_score} | Winner: {match.winner_id === match.team1_id ? match.team1?.name : match.team2?.name}</div>}
+              {match.status === 'completed' && <div style={{ color: '#22c55e', fontSize: '14px', marginTop: '12px', textAlign: 'center' }}>Completed: {match.team1_score} - {match.team2_score} | Winner: {match.winner_id === match.team1_id ? (match.team1_custom_name || match.team1?.name) : (match.team2_custom_name || match.team2?.name)}</div>}
             </div>
           ))}
         </div>
       </div>
 
-      {/* KNOCKOUT MATCHES */}
       {knockoutMatches.length > 0 && (
         <div>
           <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#C9A959', marginBottom: '16px' }}>Knockout Stage ({knockoutMatches.length})</h2>
@@ -287,20 +321,8 @@ export default function AdminPage() {
 
                 {editingId === match.id && (
                   <div style={{ background: '#0a0a0a', padding: '16px', borderRadius: '4px', marginBottom: '12px', border: '1px solid #1a1a1a', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '4px' }}>Team 1</label>
-                      <select value={match.team1_id || ''} onChange={(e) => updateMatch(match.id, 'team1_id', e.target.value)} style={{ width: '100%', padding: '8px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
-                        <option value="">Select Team 1</option>
-                        {teams.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '4px' }}>Team 2</label>
-                      <select value={match.team2_id || ''} onChange={(e) => updateMatch(match.id, 'team2_id', e.target.value)} style={{ width: '100%', padding: '8px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
-                        <option value="">Select Team 2</option>
-                        {teams.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                      </select>
-                    </div>
+                    <TeamSelect matchId={match.id} teamId={match.team1_id} customName={match.team1_custom_name} teamNum={1} teamsList={teams} />
+                    <TeamSelect matchId={match.id} teamId={match.team2_id} customName={match.team2_custom_name} teamNum={2} teamsList={teams} />
                     <div>
                       <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '4px' }}>Player/s (Team 1)</label>
                       <input defaultValue={match.team1_players || ''} onBlur={(e) => updateMatch(match.id, 'team1_players', e.target.value)} style={{ width: '100%', padding: '8px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', boxSizing: 'border-box' }} />
@@ -322,23 +344,23 @@ export default function AdminPage() {
                   </div>
                 )}
 
-                {match.team1_id && match.status !== 'completed' && (
+                {match.status !== 'completed' && (
                   <div style={{ display: 'flex', gap: '16px', alignItems: 'center', justifyContent: 'center', marginTop: '16px' }}>
                     <div style={{ flex: 1, textAlign: 'center' }}>
-                      <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>{match.team1?.name}</div>
+                      <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>{match.team1_custom_name || match.team1?.name || 'TBD'}</div>
                       <div style={{ fontSize: '12px', color: '#888888', marginTop: '4px' }}>Player/s: {match.team1_players || '-'}</div>
                       <input type="number" id={`t1-${match.id}`} defaultValue={match.team1_score || 0} style={{ width: '60px', padding: '8px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', textAlign: 'center', marginTop: '8px' }} />
                     </div>
                     <span style={{ color: '#888888', fontWeight: 'bold' }}>VS</span>
                     <div style={{ flex: 1, textAlign: 'center' }}>
-                      <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>{match.team2?.name}</div>
+                      <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>{match.team2_custom_name || match.team2?.name || 'TBD'}</div>
                       <div style={{ fontSize: '12px', color: '#888888', marginTop: '4px' }}>Player/s: {match.team2_players || '-'}</div>
                       <input type="number" id={`t2-${match.id}`} defaultValue={match.team2_score || 0} style={{ width: '60px', padding: '8px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', textAlign: 'center', marginTop: '8px' }} />
                     </div>
                     <button onClick={() => { const s1 = parseInt((document.getElementById(`t1-${match.id}`) as HTMLInputElement).value); const s2 = parseInt((document.getElementById(`t2-${match.id}`) as HTMLInputElement).value); if(!isNaN(s1) && !isNaN(s2)) completeMatch(match.id, s1, s2, match.team1_id, match.team2_id); }} style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Complete</button>
                   </div>
                 )}
-                {match.status === 'completed' && <div style={{ color: '#22c55e', fontSize: '14px', marginTop: '12px', textAlign: 'center' }}>Completed: {match.team1_score} - {match.team2_score} | Winner: {match.winner_id === match.team1_id ? match.team1?.name : match.team2?.name}</div>}
+                {match.status === 'completed' && <div style={{ color: '#22c55e', fontSize: '14px', marginTop: '12px', textAlign: 'center' }}>Completed: {match.team1_score} - {match.team2_score} | Winner: {match.winner_id === match.team1_id ? (match.team1_custom_name || match.team1?.name) : (match.team2_custom_name || match.team2?.name)}</div>}
               </div>
             ))}
           </div>
