@@ -20,7 +20,8 @@ export default function BracketPage() {
 
   if (loading) return <div style={{ textAlign: 'center', padding: '48px', color: '#C9A959' }}>Loading Bracket...</div>;
 
-  const rounds = ["R128", "R64", "R32", "R16", "Quarter-Final", "Semi-Final", "Final"];
+  // Dynamically get all unique rounds present in the data
+  const rounds = [...new Set(knockoutMatches.map(m => m.knockout_round || m.round))].sort();
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
@@ -30,7 +31,7 @@ export default function BracketPage() {
       </div>
 
       {rounds.map((round) => {
-        const roundMatches = knockoutMatches.filter(m => m.knockout_round === round || m.round === round);
+        const roundMatches = knockoutMatches.filter(m => (m.knockout_round === round || m.round === round));
         if (roundMatches.length === 0) return null;
 
         return (
@@ -39,7 +40,7 @@ export default function BracketPage() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px' }}>
               {roundMatches.map((match: any) => (
                 <div key={match.id} style={{ background: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: '4px', padding: '16px' }}>
-                  <div style={{ fontSize: '12px', color: '#888888', marginBottom: '12px' }}>Match #{match.match_number} • {match.court}</div>
+                  <div style={{ fontSize: '12px', color: '#888888', marginBottom: '12px' }}>Match #{match.match_number} • {match.category} • {match.court}</div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                     <span style={{ fontSize: '14px', fontWeight: '600', color: match.winner_id === match.team1_id ? '#C9A959' : '#ffffff' }}>{match.team1?.name || 'TBD'}</span>
                     <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>{match.status === 'completed' ? match.team1_score : '-'}</span>
@@ -61,7 +62,7 @@ export default function BracketPage() {
       })}
 
       {knockoutMatches.length === 0 && (
-        <div style={{ textAlign: 'center', padding: '48px', color: '#888888' }}>Knockout stage has not been set up yet.</div>
+        <div style={{ textAlign: 'center', padding: '48px', color: '#888888' }}>Knockout stage has not been set up yet. Go to Admin to generate matches.</div>
       )}
     </div>
   );
