@@ -8,6 +8,7 @@ export default function AdminPage() {
   const [matches, setMatches] = useState<any[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isRecalculating, setIsRecalculating] = useState(false);
   
   const [competitions, setCompetitions] = useState<any[]>([]);
   const [currentCompId, setCurrentCompId] = useState<string>("");
@@ -15,11 +16,7 @@ export default function AdminPage() {
   const [setsFormat, setSetsFormat] = useState("1");
   const [compType, setCompType] = useState("Tournament");
 
-  // Updated Categories
-  const categories = [
-    "Singles",
-    "Doubles"
-  ];
+  const categories = ["Singles", "Doubles"];
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -95,61 +92,29 @@ export default function AdminPage() {
     fetchData();
   };
 
-  // THE MAGIC FIX: Recalculate standings from scratch every time
-  const recalculateAllStandings = async () => {
-    // 1. Reset all standings for this competition to 0
-    await supabase.from("group_standings").update({
-      matches_played: 0,
-      wins: 0,
-      losses: 0,
-      points_for: 0,
-      points_against: 0
-    }).eq("competition_id", currentCompId);
+  // Atomic recalculation using SQL function
+  const recalculateStandings = async () => {
+    if (isRecalculating) return; // Prevent multiple calls
+    setIsRecalculating(true);
     
-    // 2. Get all currently completed matches
-    const { data: completedMatches } = await supabase
-      .from("matches")
-      .select("*")
-      .eq("competition_id", currentCompId)
-      .eq("status", "completed");
-    
-    if (!completedMatches) return;
-    
-    // 3. Rebuild standings based ONLY on current completed matches
-    for (const match of completedMatches) {
-      const t1Score = match.team1_score || 0;
-      const t2Score = match.team2_score || 0;
-      const t1Win = t1Score > t2Score ? 1 : 0;
-      const t2Win = t2Score > t1Score ? 1 : 0;
-
-      // Update Team 1
-      const { data: s1 } = await supabase.from('group_standings').select('*').eq('competition_id', currentCompId).eq('team_id', match.team1_id).single();
-      if (s1) {
-        await supabase.from('group_standings').update({
-          matches_played: (s1.matches_played || 0) + 1,
-          wins: (s1.wins || 0) + t1Win,
-          losses: (s1.losses || 0) + (t1Win === 0 ? 1 : 0),
-          points_for: (s1.points_for || 0) + t1Score,
-          points_against: (s1.points_against || 0) + t2Score
-        }).eq('id', s1.id);
+    try {
+      const { error } = await supabase.rpc('recalculate_standings', { 
+        p_competition_id: currentCompId 
+      });
+      
+      if (error) {
+        console.error('Recalculation error:', error);
+        alert('Error recalculating standings: ' + error.message);
       }
-
-      // Update Team 2
-      const { data: s2 } = await supabase.from('group_standings').select('*').eq('competition_id', currentCompId).eq('team_id', match.team2_id).single();
-      if (s2) {
-        await supabase.from('group_standings').update({
-          matches_played: (s2.matches_played || 0) + 1,
-          wins: (s2.wins || 0) + t2Win,
-          losses: (s2.losses || 0) + (t2Win === 0 ? 1 : 0),
-          points_for: (s2.points_for || 0) + t2Score,
-          points_against: (s2.points_against || 0) + t1Score
-        }).eq('id', s2.id);
-      }
+    } finally {
+      setIsRecalculating(false);
     }
   };
 
   const completeMatch = async (matchId: string, t1: number, t2: number, t1Id: string, t2Id: string) => {
     const winner = t1 > t2 ? t1Id : t2Id;
+    
+    // Update match first
     await supabase.from("matches").update({ 
       team1_score: t1, 
       team2_score: t2, 
@@ -157,8 +122,8 @@ export default function AdminPage() {
       status: "completed" 
     }).eq("id", matchId);
     
-    // Recalculate everything to ensure no double counting
-    await recalculateAllStandings();
+    // Then recalculate standings atomically
+    await recalculateStandings();
     fetchData();
   };
 
@@ -178,8 +143,8 @@ export default function AdminPage() {
       status: "upcoming"
     }).eq("id", matchId);
     
-    // Recalculate everything
-    await recalculateAllStandings();
+    // Recalculate standings
+    await recalculateStandings();
     fetchData();
   };
 
@@ -190,9 +155,7 @@ export default function AdminPage() {
       team1_score: 0, team2_score: 0, winner_id: null, status: "upcoming"
     }).eq("competition_id", currentCompId);
     
-    await supabase.from("group_standings").update({
-      matches_played: 0, wins: 0, losses: 0, points_for: 0, points_against: 0
-    }).eq("competition_id", currentCompId);
+    await recalculateStandings();
     
     alert("All scores and standings reset successfully!");
     fetchData();
