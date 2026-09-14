@@ -22,7 +22,7 @@ export default function AdminPage() {
   };
 
   const handleLogin = () => {
-    if (passcode === process.env.AIWM2024) {
+    if (passcode === process.env.NEXT_PUBLIC_ADMIN_PASSCODE) {
       setIsAuthenticated(true);
     } else {
       alert("Incorrect passcode. Please try again.");
@@ -140,7 +140,7 @@ export default function AdminPage() {
             </div>
           ))}
           {matches.filter((m: any) => m.team1_id && m.status !== 'completed').length === 0 && (
-            <p className="text-gray-500 text-center py-8">All matches are completed! </p>
+            <p className="text-gray-500 text-center py-8">All matches are completed!</p>
           )}
         </div>
       </section>
