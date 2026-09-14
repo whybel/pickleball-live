@@ -17,7 +17,7 @@ export default function AdminPage() {
 
   const categories = [
     "Men's Singles", "Men's Doubles", "Women's Singles", 
-    "Women's Doubles", "Mixed Doubles", "Gender Neutral Doubles"
+    "Women's Doubles", "Mixed Doubles", "Gender Neutral Doubles",
     "Singles", "Doubles"
   ];
 
