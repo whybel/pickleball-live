@@ -9,7 +9,6 @@ export default function AdminPage() {
   const [teams, setTeams] = useState<any[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   
-  // Competition Settings State
   const [competitions, setCompetitions] = useState<any[]>([]);
   const [currentCompId, setCurrentCompId] = useState<string>("");
   const [newCompName, setNewCompName] = useState("");
@@ -78,18 +77,48 @@ export default function AdminPage() {
   };
 
   const updateLiveScore = async (matchId: string, t1: number, t2: number) => {
-    // Just update the score, keep status as "live" or "upcoming"
     await supabase.from("matches").update({ 
       team1_score: t1, 
       team2_score: t2,
       status: "live"
     }).eq("id", matchId);
     fetchData();
-    alert("Live score updated!");
+  };
+
+  // This function now updates standings directly without needing SQL functions
+  const updateStandings = async (matchId: string, t1: number, t2: number, t1Id: string, t2Id: string) => {
+    const { data: match } = await supabase.from("matches").select("competition_id").eq("id", matchId).single();
+    if (!match) return;
+
+    const t1Win = t1 > t2 ? 1 : 0;
+    const t2Win = t2 > t1 ? 1 : 0;
+
+    // Update Team 1
+    const { data: s1 } = await supabase.from('group_standings').select('matches_played, wins, losses, points_for, points_against').eq('competition_id', match.competition_id).eq('team_id', t1Id).single();
+    if (s1) {
+      await supabase.from('group_standings').update({
+        matches_played: s1.matches_played + 1,
+        wins: s1.wins + t1Win,
+        losses: s1.losses + (t1Win === 0 ? 1 : 0),
+        points_for: s1.points_for + t1,
+        points_against: s1.points_against + t2
+      }).eq('competition_id', match.competition_id).eq('team_id', t1Id);
+    }
+
+    // Update Team 2
+    const { data: s2 } = await supabase.from('group_standings').select('matches_played, wins, losses, points_for, points_against').eq('competition_id', match.competition_id).eq('team_id', t2Id).single();
+    if (s2) {
+      await supabase.from('group_standings').update({
+        matches_played: s2.matches_played + 1,
+        wins: s2.wins + t2Win,
+        losses: s2.losses + (t2Win === 0 ? 1 : 0),
+        points_for: s2.points_for + t2,
+        points_against: s2.points_against + t1
+      }).eq('competition_id', match.competition_id).eq('team_id', t2Id);
+    }
   };
 
   const completeMatch = async (matchId: string, t1: number, t2: number, t1Id: string, t2Id: string) => {
-    // Mark match as completed and determine winner
     const winner = t1 > t2 ? t1Id : t2Id;
     await supabase.from("matches").update({ 
       team1_score: t1, 
@@ -98,37 +127,8 @@ export default function AdminPage() {
       status: "completed" 
     }).eq("id", matchId);
     
-    // Update standings
     await updateStandings(matchId, t1, t2, t1Id, t2Id);
     fetchData();
-  };
-
-  const updateStandings = async (matchId: string, t1: number, t2: number, t1Id: string, t2Id: string) => {
-    // Get the match details
-    const { data: match } = await supabase.from("matches").select("competition_id").eq("id", matchId).single();
-    if (!match) return;
-
-    // Update team 1 stats
-    const t1Win = t1 > t2 ? 1 : 0;
-    await supabase.rpc('update_team_standings', {
-      p_competition_id: match.competition_id,
-      p_team_id: t1Id,
-      p_wins: t1Win,
-      p_losses: t1 > t2 ? 0 : 1,
-      p_points_for: t1,
-      p_points_against: t2
-    });
-
-    // Update team 2 stats
-    const t2Win = t2 > t1 ? 1 : 0;
-    await supabase.rpc('update_team_standings', {
-      p_competition_id: match.competition_id,
-      p_team_id: t2Id,
-      p_wins: t2Win,
-      p_losses: t2 > t1 ? 0 : 1,
-      p_points_for: t2,
-      p_points_against: t1
-    });
   };
 
   const updateMatchDetails = async (id: string, field: string, value: any) => {
@@ -139,37 +139,28 @@ export default function AdminPage() {
   const resetMatchScore = async (matchId: string) => {
     if (!confirm("Reset this match score?")) return;
     await supabase.from("matches").update({
-      team1_score: 0,
-      team2_score: 0,
-      winner_id: null,
-      status: "upcoming"
+      team1_score: 0, team2_score: 0, winner_id: null, status: "upcoming"
     }).eq("id", matchId);
     fetchData();
   };
 
   const resetAllScores = async () => {
-    if (!confirm("WARNING: This will reset ALL match scores in this competition. Are you sure?")) return;
+    if (!confirm("WARNING: This will reset ALL match scores and standings in this competition. Are you sure?")) return;
+    
+    // Reset matches
     await supabase.from("matches").update({
-      team1_score: 0,
-      team2_score: 0,
-      winner_id: null,
-      status: "upcoming"
+      team1_score: 0, team2_score: 0, winner_id: null, status: "upcoming"
     }).eq("competition_id", currentCompId);
     
-    // Clear standings
+    // Reset standings
     await supabase.from("group_standings").update({
-      matches_played: 0,
-      wins: 0,
-      losses: 0,
-      points_for: 0,
-      points_against: 0
+      matches_played: 0, wins: 0, losses: 0, points_for: 0, points_against: 0
     }).eq("competition_id", currentCompId);
     
-    alert("All scores reset successfully!");
+    alert("All scores and standings reset successfully!");
     fetchData();
   };
 
-  // --- LOGIN SCREEN ---
   if (!isAuthenticated) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
@@ -186,7 +177,6 @@ export default function AdminPage() {
     );
   }
 
-  // --- DASHBOARD ---
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1a1a1a', paddingBottom: '16px' }}>
@@ -199,7 +189,6 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* Competition Manager */}
       <div style={{ background: '#111111', border: '1px solid #1a1a1a', borderRadius: '4px', padding: '24px' }}>
         <h2 style={{ fontSize: '14px', fontWeight: 'bold', color: '#C9A959', textTransform: 'uppercase', letterSpacing: '1px', marginTop: 0, marginBottom: '16px' }}>Competition Manager</h2>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
@@ -238,7 +227,6 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* Matches List */}
       <div>
         <h2 style={{ fontSize: '14px', fontWeight: 'bold', color: '#C9A959', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '16px' }}>Manage Matches</h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -330,15 +318,9 @@ export default function AdminPage() {
               
               {match.status === 'completed' && (
                 <div style={{ textAlign: 'center', padding: '16px', background: '#0a0a0a', borderRadius: '4px', border: '1px solid #1a1a1a' }}>
-                  <div style={{ color: '#C9A959', fontWeight: 'bold', fontSize: '18px', marginBottom: '8px' }}>
-                    COMPLETED
-                  </div>
-                  <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ffffff' }}>
-                    {match.team1_score} - {match.team2_score}
-                  </div>
-                  <div style={{ marginTop: '8px', color: '#22c55e', fontSize: '14px' }}>
-                    Winner: {match.winner_id === match.team1_id ? match.team1?.name : match.team2?.name}
-                  </div>
+                  <div style={{ color: '#C9A959', fontWeight: 'bold', fontSize: '18px', marginBottom: '8px' }}>COMPLETED</div>
+                  <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ffffff' }}>{match.team1_score} - {match.team2_score}</div>
+                  <div style={{ marginTop: '8px', color: '#22c55e', fontSize: '14px' }}>Winner: {match.winner_id === match.team1_id ? match.team1?.name : match.team2?.name}</div>
                 </div>
               )}
               
