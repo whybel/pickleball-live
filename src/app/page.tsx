@@ -9,6 +9,10 @@ export default function Home() {
   const [selectedCategory, setSelectedCategory] = useState<string>("All Categories");
   const [competitionName, setCompetitionName] = useState("PickleballLive Tournament");
   const [loading, setLoading] = useState(true);
+  
+  // Display Settings
+  const [showTeamName, setShowTeamName] = useState(true);
+  const [showPlayerName, setShowPlayerName] = useState(true);
 
   const categories = ["All Categories", "Singles", "Doubles", "Men's Singles", "Men's Doubles", "Women's Singles", "Women's Doubles", "Mixed Doubles"];
 
@@ -20,7 +24,11 @@ export default function Home() {
       
       setMatches(m || []);
       setTeams(t || []);
-      if (settings) setCompetitionName(settings.name);
+      if (settings) {
+        setCompetitionName(settings.name);
+        setShowTeamName(settings.show_team_name !== false);
+        setShowPlayerName(settings.show_player_name !== false);
+      }
       setLoading(false);
     };
     fetchData();
@@ -73,7 +81,7 @@ export default function Home() {
           {filteredMatches.map((match: any) => (
             <div key={match.id} style={{ background: '#111111', border: match.is_knockout ? '1px solid #C9A959' : '1px solid #1a1a1a', borderRadius: '4px', padding: '20px' }}>
               
-              {/* Match Header with Round Indicator */}
+              {/* Match Header */}
               <div style={{ marginBottom: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                   <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959' }}>
@@ -81,15 +89,26 @@ export default function Home() {
                   </span>
                   <span style={{ fontSize: '11px', color: '#888888', textTransform: 'uppercase', letterSpacing: '1px' }}>Category: {match.category}</span>
                 </div>
-                <div style={{ fontSize: '12px', color: '#888888', marginBottom: '4px' }}>{match.court} | {match.scheduled_time}</div>
-                <div style={{ fontSize: '13px', color: '#ffffff', fontWeight: '600' }}>Player/s: {match.game_type}</div>
+                <div style={{ fontSize: '12px', color: '#888888' }}>{match.court} | {match.scheduled_time}</div>
               </div>
 
-              {/* Teams and Score */}
+              {/* Teams and Score Layout */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 0' }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: '16px', fontWeight: '600', color: match.winner_id === match.team1_id ? '#C9A959' : '#ffffff' }}>{match.team1?.name || 'TBD'}</div>
+                {/* Team 1 Side */}
+                <div style={{ flex: 1, textAlign: 'center' }}>
+                  {showTeamName && (
+                    <div style={{ fontSize: '16px', fontWeight: '600', color: match.winner_id === match.team1_id ? '#C9A959' : '#ffffff', marginBottom: showPlayerName ? '4px' : '0' }}>
+                      {match.team1?.name || 'TBD'}
+                    </div>
+                  )}
+                  {showPlayerName && (
+                    <div style={{ fontSize: '12px', color: '#888888' }}>
+                      {match.team1_players || match.game_type || '-'}
+                    </div>
+                  )}
                 </div>
+
+                {/* Score */}
                 <div style={{ textAlign: 'center', minWidth: '120px' }}>
                   {match.status === 'completed' || match.status === 'live' ? (
                     <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#ffffff' }}>{match.team1_score} - {match.team2_score}</div>
@@ -97,8 +116,19 @@ export default function Home() {
                     <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#888888' }}>VS</div>
                   )}
                 </div>
-                <div style={{ flex: 1, textAlign: 'right' }}>
-                  <div style={{ fontSize: '16px', fontWeight: '600', color: match.winner_id === match.team2_id ? '#C9A959' : '#ffffff' }}>{match.team2?.name || 'TBD'}</div>
+
+                {/* Team 2 Side */}
+                <div style={{ flex: 1, textAlign: 'center' }}>
+                  {showTeamName && (
+                    <div style={{ fontSize: '16px', fontWeight: '600', color: match.winner_id === match.team2_id ? '#C9A959' : '#ffffff', marginBottom: showPlayerName ? '4px' : '0' }}>
+                      {match.team2?.name || 'TBD'}
+                    </div>
+                  )}
+                  {showPlayerName && (
+                    <div style={{ fontSize: '12px', color: '#888888' }}>
+                      {match.team2_players || match.game_type || '-'}
+                    </div>
+                  )}
                 </div>
               </div>
 
