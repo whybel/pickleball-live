@@ -20,9 +20,16 @@ export default function AdminPage() {
     "Women's Doubles", "Mixed Doubles", "Gender Neutral Doubles"
   ];
 
+  // 1. Fetch competitions on login
   useEffect(() => {
     if (isAuthenticated) {
       fetchCompetitions();
+    }
+  }, [isAuthenticated]);
+
+  // 2. Fetch matches ONLY when a competition is selected
+  useEffect(() => {
+    if (isAuthenticated && currentCompId) {
       fetchData();
     }
   }, [isAuthenticated, currentCompId]);
@@ -30,21 +37,30 @@ export default function AdminPage() {
   const fetchCompetitions = async () => {
     const { data } = await supabase.from("competitions").select("*").order("created_at", { ascending: false });
     setCompetitions(data || []);
-    if (data && data.length > 0 && !currentCompId) {
-      setCurrentCompId(data[0].id);
-      setSetsFormat(data[0].sets_format || "1");
-      setCompType(data[0].competition_type || "Tournament");
+    
+    if (data && data.length > 0) {
+      // Auto-select the first competition if none is selected
+      const activeComp = data.find((c: any) => c.status === 'active') || data[0];
+      if (!currentCompId) {
+        setCurrentCompId(activeComp.id);
+        setSetsFormat(activeComp.sets_format || "1");
+        setCompType(activeComp.competition_type || "Tournament");
+      }
     }
   };
 
   const fetchData = async () => {
-    const { data: m } = await supabase
+    // Fetch matches for the selected competition
+    const { data: m, error } = await supabase
       .from("matches")
       .select("*, team1:team1_id(name), team2:team2_id(name)")
       .eq("competition_id", currentCompId)
       .order("match_number");
     
+    if (error) console.error("Error fetching matches:", error);
+
     const { data: t } = await supabase.from("teams").select("*").order("name");
+    
     setMatches(m || []);
     setTeams(t || []);
   };
@@ -61,11 +77,11 @@ export default function AdminPage() {
     if (!newCompName) return alert("Please enter a competition name");
     const { data, error } = await supabase
       .from("competitions")
-      .insert([{ name: newCompName, sets_format: setsFormat, competition_type: compType }])
+      .insert([{ name: newCompName, sets_format: setsFormat, competition_type: compType, status: 'active' }])
       .select()
       .single();
     
-    if (error) return alert("Error creating competition");
+    if (error) return alert("Error creating competition: " + error.message);
     setNewCompName("");
     setCurrentCompId(data.id);
     fetchCompetitions();
@@ -85,36 +101,33 @@ export default function AdminPage() {
     fetchData();
   };
 
-  // This function now updates standings directly without needing SQL functions
-  const updateStandings = async (matchId: string, t1: number, t2: number, t1Id: string, t2Id: string) => {
-    const { data: match } = await supabase.from("matches").select("competition_id").eq("id", matchId).single();
-    if (!match) return;
-
+  // Client-side standings update to ensure it works without complex SQL functions
+  const updateStandingsClientSide = async (matchId: string, t1: number, t2: number, t1Id: string, t2Id: string) => {
     const t1Win = t1 > t2 ? 1 : 0;
     const t2Win = t2 > t1 ? 1 : 0;
 
     // Update Team 1
-    const { data: s1 } = await supabase.from('group_standings').select('matches_played, wins, losses, points_for, points_against').eq('competition_id', match.competition_id).eq('team_id', t1Id).single();
+    const { data: s1 } = await supabase.from('group_standings').select('*').eq('competition_id', currentCompId).eq('team_id', t1Id).single();
     if (s1) {
       await supabase.from('group_standings').update({
-        matches_played: s1.matches_played + 1,
-        wins: s1.wins + t1Win,
-        losses: s1.losses + (t1Win === 0 ? 1 : 0),
-        points_for: s1.points_for + t1,
-        points_against: s1.points_against + t2
-      }).eq('competition_id', match.competition_id).eq('team_id', t1Id);
+        matches_played: (s1.matches_played || 0) + 1,
+        wins: (s1.wins || 0) + t1Win,
+        losses: (s1.losses || 0) + (t1Win === 0 ? 1 : 0),
+        points_for: (s1.points_for || 0) + t1,
+        points_against: (s1.points_against || 0) + t2
+      }).eq('id', s1.id);
     }
 
     // Update Team 2
-    const { data: s2 } = await supabase.from('group_standings').select('matches_played, wins, losses, points_for, points_against').eq('competition_id', match.competition_id).eq('team_id', t2Id).single();
+    const { data: s2 } = await supabase.from('group_standings').select('*').eq('competition_id', currentCompId).eq('team_id', t2Id).single();
     if (s2) {
       await supabase.from('group_standings').update({
-        matches_played: s2.matches_played + 1,
-        wins: s2.wins + t2Win,
-        losses: s2.losses + (t2Win === 0 ? 1 : 0),
-        points_for: s2.points_for + t2,
-        points_against: s2.points_against + t1
-      }).eq('competition_id', match.competition_id).eq('team_id', t2Id);
+        matches_played: (s2.matches_played || 0) + 1,
+        wins: (s2.wins || 0) + t2Win,
+        losses: (s2.losses || 0) + (t2Win === 0 ? 1 : 0),
+        points_for: (s2.points_for || 0) + t2,
+        points_against: (s2.points_against || 0) + t1
+      }).eq('id', s2.id);
     }
   };
 
@@ -127,7 +140,7 @@ export default function AdminPage() {
       status: "completed" 
     }).eq("id", matchId);
     
-    await updateStandings(matchId, t1, t2, t1Id, t2Id);
+    await updateStandingsClientSide(matchId, t1, t2, t1Id, t2Id);
     fetchData();
   };
 
@@ -147,12 +160,10 @@ export default function AdminPage() {
   const resetAllScores = async () => {
     if (!confirm("WARNING: This will reset ALL match scores and standings in this competition. Are you sure?")) return;
     
-    // Reset matches
     await supabase.from("matches").update({
       team1_score: 0, team2_score: 0, winner_id: null, status: "upcoming"
     }).eq("competition_id", currentCompId);
     
-    // Reset standings
     await supabase.from("group_standings").update({
       matches_played: 0, wins: 0, losses: 0, points_for: 0, points_against: 0
     }).eq("competition_id", currentCompId);
@@ -161,6 +172,7 @@ export default function AdminPage() {
     fetchData();
   };
 
+  // --- LOGIN SCREEN ---
   if (!isAuthenticated) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
@@ -177,6 +189,7 @@ export default function AdminPage() {
     );
   }
 
+  // --- DASHBOARD ---
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1a1a1a', paddingBottom: '16px' }}>
@@ -189,6 +202,7 @@ export default function AdminPage() {
         </div>
       </div>
 
+      {/* Competition Manager */}
       <div style={{ background: '#111111', border: '1px solid #1a1a1a', borderRadius: '4px', padding: '24px' }}>
         <h2 style={{ fontSize: '14px', fontWeight: 'bold', color: '#C9A959', textTransform: 'uppercase', letterSpacing: '1px', marginTop: 0, marginBottom: '16px' }}>Competition Manager</h2>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
@@ -227,8 +241,18 @@ export default function AdminPage() {
         </div>
       </div>
 
+      {/* Matches List */}
       <div>
-        <h2 style={{ fontSize: '14px', fontWeight: 'bold', color: '#C9A959', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '16px' }}>Manage Matches</h2>
+        <h2 style={{ fontSize: '14px', fontWeight: 'bold', color: '#C9A959', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '16px' }}>
+          Manage Matches ({matches.length} found)
+        </h2>
+        
+        {matches.length === 0 && (
+          <div style={{ padding: '24px', background: '#111111', border: '1px solid #1a1a1a', borderRadius: '4px', color: '#888888', textAlign: 'center' }}>
+            No matches found for this competition. Please create matches in Supabase or select a different competition.
+          </div>
+        )}
+
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {matches.map((match: any) => (
             <div key={match.id} style={{ background: '#111111', border: '1px solid #1a1a1a', borderRadius: '4px', padding: '20px' }}>
