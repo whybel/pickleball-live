@@ -3,44 +3,46 @@ import "./globals.css";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "PickleballLive | Tournament Scoring",
-  description: "Professional pickleball tournament scoring and live results",
+  title: "PickleballLive",
+  description: "Professional Tournament Scoring",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="bg-[#0a0a0a] text-white font-sans antialiased min-h-screen flex flex-col">
+      <body style={{ background: '#0a0a0a', color: '#ffffff', fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif', margin: 0, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+        
         {/* Header */}
-        <header className="bg-[#111] border-b border-[#1a1a1a] p-6 sticky top-0 z-50">
-          <div className="max-w-6xl mx-auto flex justify-between items-center">
-            <Link href="/" className="flex items-center gap-3">
-              <span className="text-2xl font-bold tracking-tight text-white">PICKLEBALL</span>
-              <span className="text-2xl font-bold tracking-tight text-[#C9A959]">LIVE</span>
+        <header style={{ background: '#111111', borderBottom: '1px solid #1a1a1a', padding: '20px 24px', position: 'sticky', top: 0, zIndex: 50 }}>
+          <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Link href="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '24px', fontWeight: 'bold', color: '#ffffff', letterSpacing: '-0.5px' }}>PICKLEBALL</span>
+              <span style={{ fontSize: '24px', fontWeight: 'bold', color: '#C9A959', letterSpacing: '-0.5px' }}>LIVE</span>
             </Link>
-            <Link 
-              href="/admin" 
-              className="text-xs font-medium text-[#888] hover:text-[#C9A959] border border-[#2a2a2a] hover:border-[#C9A959] px-4 py-2 rounded transition-all"
-            >
+            <Link href="/admin" style={{ textDecoration: 'none', fontSize: '12px', fontWeight: '600', color: '#888888', border: '1px solid #2a2a2a', padding: '8px 16px', borderRadius: '4px' }}>
               ADMIN
             </Link>
           </div>
         </header>
 
         {/* Main Content */}
-        <main className="flex-1 max-w-6xl mx-auto w-full p-6 pb-24">
+        <main style={{ flex: 1, maxWidth: '1200px', margin: '0 auto', width: '100%', padding: '24px', paddingBottom: '100px', boxSizing: 'border-box' }}>
           {children}
         </main>
 
-        {/* Bottom Nav for Mobile */}
-        <nav className="fixed bottom-0 left-0 right-0 bg-[#111] border-t border-[#1a1a1a] p-4 flex justify-around sm:hidden z-50">
-          <Link href="/" className="flex flex-col items-center text-[#C9A959] text-xs font-medium">
-            <span className="text-xl mb-1">🏓</span>
-            LIVE
+        {/* Bottom Navigation */}
+        <nav style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: '#111111', borderTop: '1px solid #1a1a1a', padding: '16px', display: 'flex', justifyContent: 'space-around', zIndex: 50 }}>
+          <Link href="/" style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#C9A959', fontSize: '10px', fontWeight: '600' }}>
+            <span style={{ fontSize: '20px', marginBottom: '4px' }}>🏓</span> LIVE
           </Link>
-          <Link href="/admin" className="flex flex-col items-center text-[#888] text-xs font-medium">
-            <span className="text-xl mb-1">⚙️</span>
-            ADMIN
+          <Link href="/standings" style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#888888', fontSize: '10px', fontWeight: '600' }}>
+            <span style={{ fontSize: '20px', marginBottom: '4px' }}>📊</span> STANDINGS
+          </Link>
+          <Link href="/bracket" style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#888888', fontSize: '10px', fontWeight: '600' }}>
+            <span style={{ fontSize: '20px', marginBottom: '4px' }}>🏆</span> BRACKET
+          </Link>
+          <Link href="/admin" style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#888888', fontSize: '10px', fontWeight: '600' }}>
+            <span style={{ fontSize: '20px', marginBottom: '4px' }}>⚙️</span> ADMIN
           </Link>
         </nav>
       </body>

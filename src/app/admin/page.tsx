@@ -8,41 +8,46 @@ export default function AdminPage() {
   const [matches, setMatches] = useState<any[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [competitionName, setCompetitionName] = useState("PickleballLive Tournament");
-  const [competitionType, setCompetitionType] = useState("Tournament");
+  
+  // Competition Settings State
+  const [competitions, setCompetitions] = useState<any[]>([]);
+  const [currentCompId, setCurrentCompId] = useState<string>("");
+  const [newCompName, setNewCompName] = useState("");
+  const [setsFormat, setSetsFormat] = useState("1");
+  const [compType, setCompType] = useState("Tournament");
 
   const categories = [
-    "Men's Singles",
-    "Men's Doubles",
-    "Women's Singles",
-    "Women's Doubles",
-    "Mixed Doubles",
-    "Gender Neutral Doubles"
+    "Men's Singles", "Men's Doubles", "Women's Singles", 
+    "Women's Doubles", "Mixed Doubles", "Gender Neutral Doubles"
   ];
 
   useEffect(() => {
-    if (isAuthenticated) fetchData();
-  }, [isAuthenticated]);
+    if (isAuthenticated) {
+      fetchCompetitions();
+      fetchData();
+    }
+  }, [isAuthenticated, currentCompId]);
+
+  const fetchCompetitions = async () => {
+    const { data } = await supabase.from("competitions").select("*").order("created_at", { ascending: false });
+    setCompetitions(data || []);
+    if (data && data.length > 0 && !currentCompId) {
+      setCurrentCompId(data[0].id);
+      setSetsFormat(data[0].sets_format || "1");
+      setCompType(data[0].competition_type || "Tournament");
+    }
+  };
 
   const fetchData = async () => {
     const { data: m } = await supabase
       .from("matches")
       .select("*, team1:team1_id(name), team2:team2_id(name)")
+      .eq("competition_id", currentCompId)
       .order("match_number");
     
     const { data: t } = await supabase.from("teams").select("*").order("name");
-    
-    const { data: settings } = await supabase
-      .from("competition_settings")
-      .select("*")
-      .single();
-    
     setMatches(m || []);
     setTeams(t || []);
-    if (settings) {
-      setCompetitionName(settings.competition_name);
-      setCompetitionType(settings.competition_type);
-    }
   };
 
   const handleLogin = () => {
@@ -53,17 +58,28 @@ export default function AdminPage() {
     }
   };
 
+  const createCompetition = async () => {
+    if (!newCompName) return alert("Please enter a competition name");
+    const { data, error } = await supabase
+      .from("competitions")
+      .insert([{ name: newCompName, sets_format: setsFormat, competition_type: compType }])
+      .select()
+      .single();
+    
+    if (error) return alert("Error creating competition");
+    setNewCompName("");
+    setCurrentCompId(data.id);
+    fetchCompetitions();
+  };
+
+  const updateSettings = async () => {
+    await supabase.from("competitions").update({ sets_format: setsFormat, competition_type: compType }).eq("id", currentCompId);
+    alert("Settings saved!");
+  };
+
   const updateScore = async (matchId: string, t1: number, t2: number, t1Id: string, t2Id: string) => {
     const winner = t1 > t2 ? t1Id : t2Id;
-    await supabase
-      .from("matches")
-      .update({ 
-        team1_score: t1, 
-        team2_score: t2, 
-        winner_id: winner, 
-        status: "completed" 
-      })
-      .eq("id", matchId);
+    await supabase.from("matches").update({ team1_score: t1, team2_score: t2, winner_id: winner, status: "completed" }).eq("id", matchId);
     fetchData();
   };
 
@@ -72,211 +88,146 @@ export default function AdminPage() {
     fetchData();
   };
 
-  const updateCompetitionSettings = async () => {
-    await supabase
-      .from("competition_settings")
-      .update({ competition_name: competitionName, competition_type: competitionType })
-      .eq("id", 1);
-    alert("Settings updated!");
-    fetchData();
-  };
-
+  // --- LOGIN SCREEN ---
   if (!isAuthenticated) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh]">
-        <h1 className="text-3xl font-bold text-white mb-8">ADMIN ACCESS</h1>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+        <h1 style={{ fontSize: '32px', fontWeight: 'bold', marginBottom: '32px', color: '#C9A959' }}>ADMIN ACCESS</h1>
         <input 
-          type="password" 
-          placeholder="Enter Passcode" 
-          value={passcode}
-          onChange={(e) => setPasscode(e.target.value)} 
-          onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
-          className="input-field p-4 rounded w-full max-w-sm mb-6 text-center text-lg"
+          type="password" placeholder="Enter Passcode" value={passcode}
+          onChange={(e) => setPasscode(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+          style={{ padding: '16px', fontSize: '16px', border: '1px solid #2a2a2a', borderRadius: '4px', background: '#111111', color: 'white', width: '100%', maxWidth: '300px', marginBottom: '20px', textAlign: 'center' }}
         />
-        <button 
-          onClick={handleLogin} 
-          className="btn-primary px-8 py-3 rounded text-sm uppercase tracking-wider"
-        >
+        <button onClick={handleLogin} style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '16px 32px', borderRadius: '4px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '1px' }}>
           Unlock
         </button>
       </div>
     );
   }
 
+  // --- DASHBOARD ---
   return (
-    <div className="space-y-8">
-      <div className="flex justify-between items-center border-b border-[#1a1a1a] pb-6">
-        <h1 className="text-2xl font-bold text-white">SCOREKEEPER DASHBOARD</h1>
-        <button 
-          onClick={() => setIsAuthenticated(false)} 
-          className="text-xs text-red-400 hover:text-red-300 uppercase tracking-wider"
-        >
-          Logout
-        </button>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1a1a1a', paddingBottom: '16px' }}>
+        <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#ffffff', margin: 0 }}>SCOREKEEPER DASHBOARD</h1>
+        <button onClick={() => setIsAuthenticated(false)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px' }}>Logout</button>
       </div>
 
-      {/* Competition Settings */}
-      <div className="card p-6">
-        <h2 className="text-sm font-bold text-[#C9A959] uppercase tracking-wider mb-4">
-          Competition Settings
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+      {/* Competition Manager */}
+      <div style={{ background: '#111111', border: '1px solid #1a1a1a', borderRadius: '4px', padding: '24px' }}>
+        <h2 style={{ fontSize: '14px', fontWeight: 'bold', color: '#C9A959', textTransform: 'uppercase', letterSpacing: '1px', marginTop: 0, marginBottom: '16px' }}>Competition Manager</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
           <div>
-            <label className="block text-xs text-[#888] mb-2">Competition Name</label>
-            <input 
-              type="text"
-              value={competitionName}
-              onChange={(e) => setCompetitionName(e.target.value)}
-              className="input-field w-full p-3 rounded text-sm"
-            />
+            <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '8px' }}>Select Competition</label>
+            <select value={currentCompId} onChange={(e) => setCurrentCompId(e.target.value)} style={{ width: '100%', padding: '12px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
+              {competitions.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
           </div>
           <div>
-            <label className="block text-xs text-[#888] mb-2">Type</label>
-            <select 
-              value={competitionType}
-              onChange={(e) => setCompetitionType(e.target.value)}
-              className="input-field w-full p-3 rounded text-sm"
-            >
+            <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '8px' }}>Create New</label>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input type="text" placeholder="New Competition Name" value={newCompName} onChange={(e) => setNewCompName(e.target.value)} style={{ flex: 1, padding: '12px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }} />
+              <button onClick={createCompetition} style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '0 20px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Create</button>
+            </div>
+          </div>
+        </div>
+        
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', alignItems: 'end' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '8px' }}>Sets Format</label>
+            <select value={setsFormat} onChange={(e) => setSetsFormat(e.target.value)} style={{ width: '100%', padding: '12px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
+              <option value="1">1 Set (Single Game)</option>
+              <option value="3">Best of 3 Sets</option>
+              <option value="5">Best of 5 Sets</option>
+            </select>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '8px' }}>Format Type</label>
+            <select value={compType} onChange={(e) => setCompType(e.target.value)} style={{ width: '100%', padding: '12px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
               <option value="Friendly">Friendly Match</option>
               <option value="Tournament">Tournament</option>
             </select>
           </div>
+          <button onClick={updateSettings} style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '12px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', textTransform: 'uppercase', fontSize: '12px' }}>Save Settings</button>
         </div>
-        <button 
-          onClick={updateCompetitionSettings}
-          className="btn-primary px-6 py-2 rounded text-xs uppercase tracking-wider"
-        >
-          Save Settings
-        </button>
       </div>
-      
-      {/* Matches */}
-      <div className="space-y-4">
-        <h2 className="text-sm font-bold text-[#C9A959] uppercase tracking-wider">
-          Manage Matches
-        </h2>
-        
-        {matches.map((match: any) => (
-          <div key={match.id} className="card p-5">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="font-bold text-white">
-                Match #{match.match_number}
-                <span className="text-[#888] font-normal ml-2">({match.game_type})</span>
-              </h3>
-              <button 
-                onClick={() => setEditingId(editingId === match.id ? null : match.id)} 
-                className="btn-secondary px-4 py-2 rounded text-xs uppercase tracking-wider"
-              >
-                {editingId === match.id ? 'Close' : 'Edit'}
-              </button>
-            </div>
 
-            {editingId === match.id && (
-              <div className="bg-[#0a0a0a] p-4 rounded mb-4 space-y-4 border border-[#1a1a1a]">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs text-[#888] mb-2">Time</label>
-                    <input 
-                      defaultValue={match.scheduled_time} 
-                      onBlur={(e) => updateMatchDetails(match.id, 'scheduled_time', e.target.value)} 
-                      className="input-field w-full p-2 rounded text-sm" 
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-[#888] mb-2">Court</label>
-                    <input 
-                      defaultValue={match.court} 
-                      onBlur={(e) => updateMatchDetails(match.id, 'court', e.target.value)} 
-                      className="input-field w-full p-2 rounded text-sm" 
-                    />
-                  </div>
-                </div>
-                
-                <div>
-                  <label className="block text-xs text-[#888] mb-2">Category</label>
-                  <select 
-                    defaultValue={match.category || 'Mixed Doubles'}
-                    onChange={(e) => updateMatchDetails(match.id, 'category', e.target.value)}
-                    className="input-field w-full p-2 rounded text-sm"
-                  >
-                    {categories.map((cat) => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs text-[#888] mb-2">Team 1</label>
-                    <select 
-                      defaultValue={match.team1_id} 
-                      onChange={(e) => updateMatchDetails(match.id, 'team1_id', e.target.value)} 
-                      className="input-field w-full p-2 rounded text-sm"
-                    >
-                      <option value="">Select Team</option>
-                      {teams.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-[#888] mb-2">Team 2</label>
-                    <select 
-                      defaultValue={match.team2_id} 
-                      onChange={(e) => updateMatchDetails(match.id, 'team2_id', e.target.value)} 
-                      className="input-field w-full p-2 rounded text-sm"
-                    >
-                      <option value="">Select Team</option>
-                      {teams.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                    </select>
-                  </div>
-                </div>
+      {/* Matches List */}
+      <div>
+        <h2 style={{ fontSize: '14px', fontWeight: 'bold', color: '#C9A959', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '16px' }}>Manage Matches</h2>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {matches.map((match: any) => (
+            <div key={match.id} style={{ background: '#111111', border: '1px solid #1a1a1a', borderRadius: '4px', padding: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h3 style={{ margin: 0, color: 'white', fontSize: '16px' }}>Match #{match.match_number} <span style={{ color: '#888888', fontWeight: 'normal', fontSize: '14px' }}>({match.game_type})</span></h3>
+                <button onClick={() => setEditingId(editingId === match.id ? null : match.id)} style={{ background: '#1a1a1a', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', textTransform: 'uppercase' }}>
+                  {editingId === match.id ? 'Close' : 'Edit'}
+                </button>
               </div>
-            )}
 
-            {match.team1_id && match.status !== 'completed' && (
-              <div className="bg-[#0a0a0a] p-4 rounded border border-[#1a1a1a]">
-                <div className="flex items-center gap-6">
-                  <div className="flex-1 text-center">
-                    <p className="text-xs text-[#888] mb-3">{match.team1?.name}</p>
-                    <input 
-                      type="number" 
-                      id={`t1-${match.id}`} 
-                      placeholder="0" 
-                      className="input-field w-20 p-3 rounded text-2xl font-bold text-center mx-auto block" 
-                    />
+              {editingId === match.id && (
+                <div style={{ background: '#0a0a0a', padding: '16px', borderRadius: '4px', marginBottom: '16px', border: '1px solid #1a1a1a', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '8px' }}>Time</label>
+                    <input defaultValue={match.scheduled_time} onBlur={(e) => updateMatchDetails(match.id, 'scheduled_time', e.target.value)} style={{ width: '100%', padding: '10px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', boxSizing: 'border-box' }} />
                   </div>
-                  <span className="text-[#888] font-bold text-xl">VS</span>
-                  <div className="flex-1 text-center">
-                    <p className="text-xs text-[#888] mb-3">{match.team2?.name}</p>
-                    <input 
-                      type="number" 
-                      id={`t2-${match.id}`} 
-                      placeholder="0" 
-                      className="input-field w-20 p-3 rounded text-2xl font-bold text-center mx-auto block" 
-                    />
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '8px' }}>Court</label>
+                    <input defaultValue={match.court} onBlur={(e) => updateMatchDetails(match.id, 'court', e.target.value)} style={{ width: '100%', padding: '10px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', boxSizing: 'border-box' }} />
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '8px' }}>Category</label>
+                    <select defaultValue={match.category || 'Mixed Doubles'} onChange={(e) => updateMatchDetails(match.id, 'category', e.target.value)} style={{ width: '100%', padding: '10px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', boxSizing: 'border-box' }}>
+                      {categories.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '8px' }}>Team 1</label>
+                    <select defaultValue={match.team1_id} onChange={(e) => updateMatchDetails(match.id, 'team1_id', e.target.value)} style={{ width: '100%', padding: '10px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', boxSizing: 'border-box' }}>
+                      <option value="">Select Team</option>
+                      {teams.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '8px' }}>Team 2</label>
+                    <select defaultValue={match.team2_id} onChange={(e) => updateMatchDetails(match.id, 'team2_id', e.target.value)} style={{ width: '100%', padding: '10px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', boxSizing: 'border-box' }}>
+                      <option value="">Select Team</option>
+                      {teams.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {match.team1_id && match.status !== 'completed' && (
+                <div style={{ background: '#0a0a0a', padding: '16px', borderRadius: '4px', border: '1px solid #1a1a1a', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                  <div style={{ flex: 1, textAlign: 'center' }}>
+                    <p style={{ fontSize: '12px', color: '#888888', marginBottom: '8px', margin: '0 0 8px 0' }}>{match.team1?.name}</p>
+                    <input type="number" id={`t1-${match.id}`} placeholder="0" style={{ width: '80px', padding: '12px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', fontSize: '20px', fontWeight: 'bold', textAlign: 'center', borderRadius: '4px' }} />
+                  </div>
+                  <span style={{ color: '#888888', fontWeight: 'bold', fontSize: '20px' }}>VS</span>
+                  <div style={{ flex: 1, textAlign: 'center' }}>
+                    <p style={{ fontSize: '12px', color: '#888888', marginBottom: '8px', margin: '0 0 8px 0' }}>{match.team2?.name}</p>
+                    <input type="number" id={`t2-${match.id}`} placeholder="0" style={{ width: '80px', padding: '12px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', fontSize: '20px', fontWeight: 'bold', textAlign: 'center', borderRadius: '4px' }} />
                   </div>
                   <button 
                     onClick={() => {
                       const s1 = parseInt((document.getElementById(`t1-${match.id}`) as HTMLInputElement).value);
                       const s2 = parseInt((document.getElementById(`t2-${match.id}`) as HTMLInputElement).value);
-                      if(!isNaN(s1) && !isNaN(s2)) {
-                        updateScore(match.id, s1, s2, match.team1_id, match.team2_id);
-                      }
+                      if(!isNaN(s1) && !isNaN(s2)) updateScore(match.id, s1, s2, match.team1_id, match.team2_id);
                     }}
-                    className="btn-primary px-6 py-3 rounded text-xs uppercase tracking-wider"
-                  >
-                    Save
-                  </button>
+                    style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '12px 24px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', textTransform: 'uppercase', fontSize: '12px' }}
+                  >Save</button>
                 </div>
-              </div>
-            )}
-            
-            {match.status === 'completed' && (
-              <div className="text-center py-3 bg-[#0a0a0a] rounded border border-[#1a1a1a] text-[#C9A959] font-medium">
-                Completed: {match.team1_score} - {match.team2_score}
-              </div>
-            )}
-          </div>
-        ))}
+              )}
+              
+              {match.status === 'completed' && (
+                <div style={{ textAlign: 'center', padding: '12px', background: '#0a0a0a', borderRadius: '4px', border: '1px solid #1a1a1a', color: '#C9A959', fontWeight: 'bold', marginTop: '16px' }}>
+                  Completed: {match.team1_score} - {match.team2_score}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
