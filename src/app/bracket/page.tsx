@@ -30,11 +30,11 @@ export default function BracketPage() {
   // 2. Special handling for Semi-Finals (Split into Box 1 and Box 2)
   const allSfMatches = knockoutMatches
     .filter((m: any) => m.knockout_round === 'Semi-Final')
-    .sort((a: any, b: any) => a.match_number - b.match_number); // Sort by match number
+    .sort((a: any, b: any) => a.match_number - b.match_number);
   
   const midIndex = Math.ceil(allSfMatches.length / 2);
-  const semiFinal1 = allSfMatches.slice(0, midIndex); // e.g., Match 55-57
-  const semiFinal2 = allSfMatches.slice(midIndex);    // e.g., Match 58-60
+  const semiFinal1 = allSfMatches.slice(0, midIndex);
+  const semiFinal2 = allSfMatches.slice(midIndex);
 
   // 3. Final Matches
   const finalMatches = knockoutMatches.filter((m: any) => m.knockout_round === 'Final');
@@ -101,8 +101,8 @@ export default function BracketPage() {
       <h1 style={{ fontSize: '32px', fontWeight: 'bold', color: '#ffffff', marginBottom: '8px', textAlign: 'center' }}>KNOCKOUT BRACKET</h1>
       <p style={{ color: '#888888', textAlign: 'center', marginBottom: '40px' }}>Elimination Stage</p>
       
-      {/* Main Bracket Container */}
-      <div style={{ display: 'flex', gap: '40px', alignItems: 'center', overflowX: 'auto', paddingBottom: '40px' }}>
+      {/* Main Bracket Container - Increased gap to 80px */}
+      <div style={{ display: 'flex', gap: '80px', alignItems: 'center', overflowX: 'auto', paddingBottom: '40px' }}>
         
         {/* Early Rounds (Quarters, etc.) */}
         {rounds.map((round) => {
@@ -120,42 +120,64 @@ export default function BracketPage() {
 
         {/* Semi-Finals Section (The Two Gold Boxes) */}
         {(semiFinal1.length > 0 || semiFinal2.length > 0) && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '40px', minWidth: '260px', position: 'relative' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '60px', minWidth: '280px', position: 'relative', paddingRight: '40px' }}>
             
             {/* Semi-Final 1 Box */}
             {semiFinal1.length > 0 && (
-              <div style={{ border: '2px solid #C9A959', borderRadius: '8px', padding: '16px', background: 'rgba(201, 169, 89, 0.05)' }}>
+              <div style={{ border: '2px solid #C9A959', borderRadius: '8px', padding: '16px', background: 'rgba(201, 169, 89, 0.05)', position: 'relative' }}>
                 <h3 style={{ color: '#C9A959', fontSize: '16px', fontWeight: 'bold', marginTop: 0, marginBottom: '16px', textAlign: 'center', textTransform: 'uppercase' }}>Semi-Final 1</h3>
                 {semiFinal1.map((m: any) => renderMatchCard(m, true))}
+                {/* Connector line to the right */}
+                <div style={{ position: 'absolute', right: '-40px', top: '50%', width: '40px', height: '2px', background: '#C9A959' }}></div>
               </div>
             )}
 
             {/* Semi-Final 2 Box */}
             {semiFinal2.length > 0 && (
-              <div style={{ border: '2px solid #C9A959', borderRadius: '8px', padding: '16px', background: 'rgba(201, 169, 89, 0.05)' }}>
+              <div style={{ border: '2px solid #C9A959', borderRadius: '8px', padding: '16px', background: 'rgba(201, 169, 89, 0.05)', position: 'relative' }}>
                 <h3 style={{ color: '#C9A959', fontSize: '16px', fontWeight: 'bold', marginTop: 0, marginBottom: '16px', textAlign: 'center', textTransform: 'uppercase' }}>Semi-Final 2</h3>
                 {semiFinal2.map((m: any) => renderMatchCard(m, true))}
+                {/* Connector line to the right */}
+                <div style={{ position: 'absolute', right: '-40px', top: '50%', width: '40px', height: '2px', background: '#C9A959' }}></div>
               </div>
             )}
 
-            {/* Gold Branching Lines (Visual CSS) */}
-            <div style={{ position: 'absolute', right: '-20px', top: '25%', height: '50%', width: '20px', borderRight: '2px solid #C9A959', borderTop: '2px solid #C9A959', borderBottom: '2px solid #C9A959' }}></div>
+            {/* Vertical connector between SF1 and SF2 */}
+            {semiFinal1.length > 0 && semiFinal2.length > 0 && (
+              <div style={{ 
+                position: 'absolute', 
+                right: '-40px', 
+                top: `${100 / (semiFinal1.length + semiFinal2.length) * semiFinal1.length}%`, 
+                height: `${100 / (semiFinal1.length + semiFinal2.length) * semiFinal2.length}%`, 
+                width: '2px', 
+                background: '#C9A959',
+                transform: 'translateY(-50%)'
+              }}></div>
+            )}
           </div>
         )}
 
-        {/* Final Section */}
+        {/* Final Section - With more spacing */}
         {finalMatches.length > 0 && (
-          <div style={{ minWidth: '260px', display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
-             {/* Gold Line connecting from Semis */}
-             <div style={{ position: 'absolute', left: '-20px', top: '50%', width: '20px', height: '2px', background: '#C9A959' }}></div>
+          <div style={{ minWidth: '300px', display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative', paddingLeft: '20px' }}>
+             {/* Gold Line connecting from Semis - longer and more visible */}
+             <div style={{ 
+               position: 'absolute', 
+               left: '-60px', 
+               top: '50%', 
+               width: '60px', 
+               height: '3px', 
+               background: '#C9A959',
+               boxShadow: '0 0 10px rgba(201, 169, 89, 0.5)'
+             }}></div>
 
-            <div style={{ border: '3px solid #C9A959', borderRadius: '8px', padding: '20px', background: 'rgba(201, 169, 89, 0.1)', width: '100%', boxShadow: '0 0 15px rgba(201, 169, 89, 0.2)' }}>
-              <h3 style={{ color: '#C9A959', fontSize: '18px', fontWeight: 'bold', marginTop: 0, marginBottom: '16px', textAlign: 'center', textTransform: 'uppercase' }}>The Final</h3>
+            <div style={{ border: '3px solid #C9A959', borderRadius: '8px', padding: '24px', background: 'rgba(201, 169, 89, 0.1)', width: '100%', boxShadow: '0 0 20px rgba(201, 169, 89, 0.3)' }}>
+              <h3 style={{ color: '#C9A959', fontSize: '20px', fontWeight: 'bold', marginTop: 0, marginBottom: '20px', textAlign: 'center', textTransform: 'uppercase', letterSpacing: '2px' }}>The Final</h3>
               {finalMatches.map((m: any) => renderMatchCard(m, true))}
               
               {/* Champion Trophy Icon */}
               {finalMatches[0]?.status === 'completed' && (
-                <div style={{ textAlign: 'center', marginTop: '16px', fontSize: '24px' }}>🏆</div>
+                <div style={{ textAlign: 'center', marginTop: '20px', fontSize: '32px' }}>🏆</div>
               )}
             </div>
           </div>
