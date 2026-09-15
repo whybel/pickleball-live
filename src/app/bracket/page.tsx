@@ -86,10 +86,22 @@ export default function BracketPage() {
 
   return (
     <div style={{ padding: '24px', maxWidth: '1600px', margin: '0 auto' }}>
+      <style>{`
+        @media (max-width: 768px) {
+          .bracket-desktop { display: none !important; }
+          .bracket-mobile { display: flex !important; }
+        }
+        @media (min-width: 769px) {
+          .bracket-desktop { display: flex !important; }
+          .bracket-mobile { display: none !important; }
+        }
+      `}</style>
+
       <h1 style={{ fontSize: '32px', fontWeight: 'bold', color: '#ffffff', marginBottom: '8px', textAlign: 'center' }}>KNOCKOUT BRACKET</h1>
       <p style={{ color: '#888888', textAlign: 'center', marginBottom: '40px' }}>Elimination Stage</p>
       
-      <div style={{ display: 'flex', gap: '60px', alignItems: 'flex-start', overflowX: 'auto', paddingBottom: '40px' }}>
+      {/* DESKTOP VIEW - Horizontal with Final centered */}
+      <div className="bracket-desktop" style={{ gap: '60px', alignItems: 'center', overflowX: 'auto', paddingBottom: '40px' }}>
         
         {/* Early Rounds */}
         {rounds.map((round) => {
@@ -105,11 +117,11 @@ export default function BracketPage() {
           );
         })}
 
-        {/* Semi-Finals with Connectors */}
+        {/* Semi-Finals and Final - Centered */}
         {(semiFinal1.length > 0 || semiFinal2.length > 0) && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '60px', flex: 1 }}>
             
-            {/* Semi-Final Boxes Column */}
+            {/* Semi-Final Boxes */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '40px' }}>
               {semiFinal1.length > 0 && (
                 <div style={{ border: '2px solid #C9A959', borderRadius: '8px', padding: '16px', background: 'rgba(201, 169, 89, 0.05)', minWidth: '280px' }}>
@@ -125,19 +137,7 @@ export default function BracketPage() {
               )}
             </div>
 
-            {/* Connector Lines */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '60px', position: 'relative', height: '100%' }}>
-              {/* Horizontal line from SF1 */}
-              <div style={{ position: 'absolute', top: '25%', left: '0', width: '30px', height: '2px', background: '#C9A959' }}></div>
-              {/* Horizontal line from SF2 */}
-              <div style={{ position: 'absolute', top: '75%', left: '0', width: '30px', height: '2px', background: '#C9A959' }}></div>
-              {/* Vertical connector */}
-              <div style={{ position: 'absolute', top: '25%', left: '30px', width: '2px', height: '50%', background: '#C9A959' }}></div>
-              {/* Horizontal line to Final */}
-              <div style={{ position: 'absolute', top: '50%', left: '30px', width: '30px', height: '2px', background: '#C9A959' }}></div>
-            </div>
-
-            {/* Final Box */}
+            {/* Final Box - Centered */}
             {finalMatches.length > 0 && (
               <div style={{ border: '3px solid #C9A959', borderRadius: '8px', padding: '24px', background: 'rgba(201, 169, 89, 0.1)', minWidth: '300px', boxShadow: '0 0 20px rgba(201, 169, 89, 0.3)' }}>
                 <h3 style={{ color: '#C9A959', fontSize: '20px', fontWeight: 'bold', marginTop: 0, marginBottom: '20px', textAlign: 'center', textTransform: 'uppercase', letterSpacing: '2px' }}>The Final</h3>
@@ -149,7 +149,51 @@ export default function BracketPage() {
             )}
           </div>
         )}
+      </div>
 
+      {/* MOBILE VIEW - Vertical stacking */}
+      <div className="bracket-mobile" style={{ flexDirection: 'column', gap: '32px' }}>
+        
+        {/* Early Rounds */}
+        {rounds.map((round) => {
+          const roundMatches = matchesByRound[round];
+          if (!roundMatches || roundMatches.length === 0) return null;
+          return (
+            <div key={round} style={{ width: '100%' }}>
+              <div style={{ background: 'rgba(201, 169, 89, 0.15)', padding: '10px', textAlign: 'center', borderRadius: '4px 4px 0 0', borderBottom: '2px solid #C9A959' }}>
+                <h2 style={{ fontSize: '14px', fontWeight: 'bold', color: '#C9A959', margin: 0, textTransform: 'uppercase' }}>{round}</h2>
+              </div>
+              {roundMatches.map((m: any) => renderMatchCard(m))}
+            </div>
+          );
+        })}
+
+        {/* Semi-Final 1 */}
+        {semiFinal1.length > 0 && (
+          <div style={{ border: '2px solid #C9A959', borderRadius: '8px', padding: '16px', background: 'rgba(201, 169, 89, 0.05)', width: '100%' }}>
+            <h3 style={{ color: '#C9A959', fontSize: '16px', fontWeight: 'bold', marginTop: 0, marginBottom: '16px', textAlign: 'center', textTransform: 'uppercase' }}>Semi-Final 1</h3>
+            {semiFinal1.map((m: any) => renderMatchCard(m, true))}
+          </div>
+        )}
+
+        {/* Semi-Final 2 */}
+        {semiFinal2.length > 0 && (
+          <div style={{ border: '2px solid #C9A959', borderRadius: '8px', padding: '16px', background: 'rgba(201, 169, 89, 0.05)', width: '100%' }}>
+            <h3 style={{ color: '#C9A959', fontSize: '16px', fontWeight: 'bold', marginTop: 0, marginBottom: '16px', textAlign: 'center', textTransform: 'uppercase' }}>Semi-Final 2</h3>
+            {semiFinal2.map((m: any) => renderMatchCard(m, true))}
+          </div>
+        )}
+
+        {/* Final */}
+        {finalMatches.length > 0 && (
+          <div style={{ border: '3px solid #C9A959', borderRadius: '8px', padding: '24px', background: 'rgba(201, 169, 89, 0.1)', width: '100%', boxShadow: '0 0 20px rgba(201, 169, 89, 0.3)' }}>
+            <h3 style={{ color: '#C9A959', fontSize: '20px', fontWeight: 'bold', marginTop: 0, marginBottom: '20px', textAlign: 'center', textTransform: 'uppercase', letterSpacing: '2px' }}>The Final</h3>
+            {finalMatches.map((m: any) => renderMatchCard(m, true))}
+            {finalMatches[0]?.status === 'completed' && (
+              <div style={{ textAlign: 'center', marginTop: '20px', fontSize: '32px' }}>🏆</div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
