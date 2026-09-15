@@ -22,22 +22,22 @@ export default function BracketPage() {
 
   // 1. Separate matches by round
   const rounds = ["R128", "R64", "R32", "R16", "Quarter-Final"];
-  const matchesByRound: any = {};
+  const matchesByRound: Record<string, any[]> = {};
   rounds.forEach(round => {
-    matchesByRound[round] = knockoutMatches.filter(m => m.knockout_round === round || m.round === round);
+    matchesByRound[round] = knockoutMatches.filter((m: any) => m.knockout_round === round || m.round === round);
   });
 
   // 2. Special handling for Semi-Finals (Split into Box 1 and Box 2)
   const allSfMatches = knockoutMatches
-    .filter(m => m.knockout_round === 'Semi-Final')
-    .sort((a, b) => a.match_number - b.match_number); // Sort by match number
+    .filter((m: any) => m.knockout_round === 'Semi-Final')
+    .sort((a: any, b: any) => a.match_number - b.match_number); // Sort by match number
   
   const midIndex = Math.ceil(allSfMatches.length / 2);
   const semiFinal1 = allSfMatches.slice(0, midIndex); // e.g., Match 55-57
   const semiFinal2 = allSfMatches.slice(midIndex);    // e.g., Match 58-60
 
   // 3. Final Matches
-  const finalMatches = knockoutMatches.filter(m => m.knockout_round === 'Final');
+  const finalMatches = knockoutMatches.filter((m: any) => m.knockout_round === 'Final');
 
   const hasAnyMatches = knockoutMatches.length > 0;
 
@@ -113,7 +113,7 @@ export default function BracketPage() {
               <div style={{ background: 'rgba(201, 169, 89, 0.15)', padding: '10px', textAlign: 'center', borderRadius: '4px 4px 0 0', borderBottom: '2px solid #C9A959' }}>
                 <h2 style={{ fontSize: '14px', fontWeight: 'bold', color: '#C9A959', margin: 0, textTransform: 'uppercase' }}>{round}</h2>
               </div>
-              {roundMatches.map(m => renderMatchCard(m))}
+              {roundMatches.map((m: any) => renderMatchCard(m))}
             </div>
           );
         })}
@@ -126,7 +126,7 @@ export default function BracketPage() {
             {semiFinal1.length > 0 && (
               <div style={{ border: '2px solid #C9A959', borderRadius: '8px', padding: '16px', background: 'rgba(201, 169, 89, 0.05)' }}>
                 <h3 style={{ color: '#C9A959', fontSize: '16px', fontWeight: 'bold', marginTop: 0, marginBottom: '16px', textAlign: 'center', textTransform: 'uppercase' }}>Semi-Final 1</h3>
-                {semiFinal1.map(m => renderMatchCard(m, true))}
+                {semiFinal1.map((m: any) => renderMatchCard(m, true))}
               </div>
             )}
 
@@ -134,7 +134,7 @@ export default function BracketPage() {
             {semiFinal2.length > 0 && (
               <div style={{ border: '2px solid #C9A959', borderRadius: '8px', padding: '16px', background: 'rgba(201, 169, 89, 0.05)' }}>
                 <h3 style={{ color: '#C9A959', fontSize: '16px', fontWeight: 'bold', marginTop: 0, marginBottom: '16px', textAlign: 'center', textTransform: 'uppercase' }}>Semi-Final 2</h3>
-                {semiFinal2.map(m => renderMatchCard(m, true))}
+                {semiFinal2.map((m: any) => renderMatchCard(m, true))}
               </div>
             )}
 
@@ -151,7 +151,7 @@ export default function BracketPage() {
 
             <div style={{ border: '3px solid #C9A959', borderRadius: '8px', padding: '20px', background: 'rgba(201, 169, 89, 0.1)', width: '100%', boxShadow: '0 0 15px rgba(201, 169, 89, 0.2)' }}>
               <h3 style={{ color: '#C9A959', fontSize: '18px', fontWeight: 'bold', marginTop: 0, marginBottom: '16px', textAlign: 'center', textTransform: 'uppercase' }}>The Final</h3>
-              {finalMatches.map(m => renderMatchCard(m, true))}
+              {finalMatches.map((m: any) => renderMatchCard(m, true))}
               
               {/* Champion Trophy Icon */}
               {finalMatches[0]?.status === 'completed' && (
