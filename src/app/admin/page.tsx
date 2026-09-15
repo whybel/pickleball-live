@@ -20,9 +20,8 @@ export default function AdminPage() {
   const [newMatchCourt, setNewMatchCourt] = useState("Court 1");
   const [newMatchTime, setNewMatchTime] = useState("4:30 PM");
 
-  // Tournament Setup Options
-  const [tournamentFormat, setTournamentFormat] = useState("round_robin_knockout"); // round_robin_knockout, direct_knockout, league, friendly
-  const [tournamentType, setTournamentType] = useState("tournament"); // tournament, friendly
+  const [tournamentFormat, setTournamentFormat] = useState("round_robin_knockout");
+  const [tournamentType, setTournamentType] = useState("tournament");
 
   const categories = ["Singles", "Doubles", "Men's Singles", "Men's Doubles", "Women's Singles", "Women's Doubles", "Mixed Doubles"];
   const [selectedKnockoutCategories, setSelectedKnockoutCategories] = useState<string[]>(["Singles", "Doubles"]);
@@ -129,15 +128,144 @@ export default function AdminPage() {
     fetchData();
   };
 
+  // EXPORT DATABASE FUNCTION
+  const exportDatabase = async () => {
+    if (!currentCompId) return alert("No competition selected");
+    
+    try {
+      // Fetch all data
+      const { data: competition } = await supabase.from("competitions").select("*").eq("id", currentCompId).single();
+      const { data: matchesData } = await supabase.from("matches").select("*").eq("competition_id", currentCompId);
+      const { data: teamsData } = await supabase.from("teams").select("*");
+      const { data: standingsData } = await supabase.from("group_standings").select("*").eq("competition_id", currentCompId);
+
+      const exportData = {
+        export_date: new Date().toISOString(),
+        competition,
+        matches: matchesData || [],
+        teams: teamsData || [],
+        standings: standingsData || []
+      };
+
+      // Create and download JSON file
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `pickleball-tournament-${competition?.name?.replace(/\s+/g, '-').toLowerCase() || 'export'}-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      alert("Database exported successfully!");
+    } catch (error) {
+      console.error("Export error:", error);
+      alert("Error exporting database");
+    }
+  };
+
+  // IMPORT DATABASE FUNCTION
+  const importDatabase = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const importData = JSON.parse(text);
+
+      if (!confirm(`Import tournament "${importData.competition?.name}"? This will create a new competition with all matches, teams, and standings.`)) {
+        event.target.value = '';
+        return;
+      }
+
+      // Create new competition
+      const { data: newComp, error: compError } = await supabase.from("competitions").insert([{
+        name: importData.competition.name + " (Imported)",
+        format_type: importData.competition.format_type,
+        competition_type: importData.competition.competition_type,
+        show_team_name: importData.competition.show_team_name,
+        show_player_name: importData.competition.show_player_name,
+        status: 'active'
+      }]).select().single();
+
+      if (compError) throw compError;
+
+      // Import teams (avoid duplicates)
+      const existingTeams: any[] = [];
+      for (const team of importData.teams) {
+        const { data: existingTeam } = await supabase.from("teams").select("*").eq("name", team.name).single();
+        if (existingTeam) {
+          existingTeams.push({ old_id: team.id, new_id: existingTeam.id });
+        } else {
+          const { data: newTeam } = await supabase.from("teams").insert([{ name: team.name }]).select().single();
+          existingTeams.push({ old_id: team.id, new_id: newTeam.id });
+        }
+      }
+
+      // Import matches with updated team IDs
+      for (const match of importData.matches) {
+        const team1New = existingTeams.find(t => t.old_id === match.team1_id)?.new_id || match.team1_id;
+        const team2New = existingTeams.find(t => t.old_id === match.team2_id)?.new_id || match.team2_id;
+        
+        await supabase.from("matches").insert([{
+          competition_id: newComp.id,
+          match_number: match.match_number,
+          is_knockout: match.is_knockout,
+          knockout_round: match.knockout_round,
+          round: match.round,
+          category: match.category,
+          court: match.court,
+          scheduled_time: match.scheduled_time,
+          game_type: match.game_type,
+          status: match.status,
+          team1_id: team1New,
+          team2_id: team2New,
+          team1_score: match.team1_score,
+          team2_score: match.team2_score,
+          winner_id: match.winner_id,
+          team1_players: match.team1_players,
+          team2_players: match.team2_players,
+          team1_custom_name: match.team1_custom_name,
+          team2_custom_name: match.team2_custom_name
+        }]);
+      }
+
+      // Import standings
+      for (const standing of importData.standings) {
+        const teamNew = existingTeams.find(t => t.old_id === standing.team_id)?.new_id || standing.team_id;
+        await supabase.from("group_standings").insert([{
+          competition_id: newComp.id,
+          team_id: teamNew,
+          group: standing.group,
+          matches_played: standing.matches_played,
+          wins: standing.wins,
+          losses: standing.losses,
+          points_for: standing.points_for,
+          points_against: standing.points_against,
+          rank: standing.rank
+        }]);
+      }
+
+      alert("Tournament imported successfully! Switched to imported competition.");
+      setCurrentCompId(newComp.id);
+      fetchCompetitions();
+      fetchData();
+      event.target.value = '';
+    } catch (error) {
+      console.error("Import error:", error);
+      alert("Error importing database: " + (error as any).message);
+      event.target.value = '';
+    }
+  };
+
   const groupMatches = matches.filter(m => !m.is_knockout);
   const knockoutMatches = matches.filter(m => m.is_knockout);
 
-  // Fixed TeamSelect Component - Uses local state that doesn't reset on data fetch
   const TeamSelect = ({ matchId, teamId, customName, teamNum, teamsList }: any) => {
     const [localCustomMode, setLocalCustomMode] = useState(!!customName);
     const [localCustomValue, setLocalCustomValue] = useState(customName || '');
 
-    // Update local state when prop changes
     useEffect(() => {
       setLocalCustomMode(!!customName);
       setLocalCustomValue(customName || '');
@@ -199,6 +327,21 @@ export default function AdminPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1a1a1a', paddingBottom: '16px' }}>
         <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#ffffff', margin: 0 }}>TOURNAMENT MANAGER</h1>
         <button onClick={() => setIsAuthenticated(false)} style={{ background: 'none', border: 'none', color: '#888888', cursor: 'pointer', fontSize: '12px', textTransform: 'uppercase' }}>Logout</button>
+      </div>
+
+      {/* EXPORT/IMPORT SECTION */}
+      <div style={{ background: '#111111', border: '2px solid #C9A959', borderRadius: '4px', padding: '24px' }}>
+        <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '16px' }}>💾 Database Backup & Restore</h2>
+        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <button onClick={exportDatabase} style={{ background: '#22c55e', color: '#0a0a0a', border: 'none', padding: '12px 24px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
+            📥 Export Database (JSON)
+          </button>
+          <label style={{ background: '#3b82f6', color: 'white', padding: '12px 24px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', display: 'inline-block' }}>
+            📤 Import Database
+            <input type="file" accept=".json" onChange={importDatabase} style={{ display: 'none' }} />
+          </label>
+          <span style={{ color: '#888888', fontSize: '12px', flex: 1 }}>Export saves all matches, teams, and standings. Import creates a new competition from backup.</span>
+        </div>
       </div>
 
       {/* Tournament Type Selection */}
