@@ -97,12 +97,30 @@ export default function BracketPage() {
   );
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1600px', margin: '0 auto' }}>
+    <div style={{ padding: '24px', maxWidth: '1600px', margin: '0 auto', position: 'relative' }}>
       <h1 style={{ fontSize: '32px', fontWeight: 'bold', color: '#ffffff', marginBottom: '8px', textAlign: 'center' }}>KNOCKOUT BRACKET</h1>
       <p style={{ color: '#888888', textAlign: 'center', marginBottom: '40px' }}>Elimination Stage</p>
       
-      {/* Main Bracket Container - Increased gap to 80px */}
-      <div style={{ display: 'flex', gap: '80px', alignItems: 'center', overflowX: 'auto', paddingBottom: '40px' }}>
+      {/* SVG Layer for connecting lines - positioned absolutely behind everything */}
+      <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 0 }} preserveAspectRatio="none">
+        {/* Connector from Semi-Final 1 to Final */}
+        <path 
+          d="M 0,150 L 100,150 L 100,250 L 400,250" 
+          fill="none" 
+          stroke="#C9A959" 
+          strokeWidth="2"
+        />
+        {/* Connector from Semi-Final 2 to Final */}
+        <path 
+          d="M 0,550 L 100,550 L 100,450 L 400,450" 
+          fill="none" 
+          stroke="#C9A959" 
+          strokeWidth="2"
+        />
+      </svg>
+
+      {/* Main Bracket Container */}
+      <div style={{ display: 'flex', gap: '80px', alignItems: 'center', overflowX: 'auto', paddingBottom: '40px', position: 'relative', zIndex: 1 }}>
         
         {/* Early Rounds (Quarters, etc.) */}
         {rounds.map((round) => {
@@ -118,59 +136,31 @@ export default function BracketPage() {
           );
         })}
 
-        {/* Semi-Finals Section (The Two Gold Boxes) */}
+        {/* Semi-Finals Section */}
         {(semiFinal1.length > 0 || semiFinal2.length > 0) && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '60px', minWidth: '280px', position: 'relative', paddingRight: '40px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '80px', minWidth: '280px' }}>
             
             {/* Semi-Final 1 Box */}
             {semiFinal1.length > 0 && (
-              <div style={{ border: '2px solid #C9A959', borderRadius: '8px', padding: '16px', background: 'rgba(201, 169, 89, 0.05)', position: 'relative' }}>
+              <div style={{ border: '2px solid #C9A959', borderRadius: '8px', padding: '16px', background: 'rgba(201, 169, 89, 0.05)' }}>
                 <h3 style={{ color: '#C9A959', fontSize: '16px', fontWeight: 'bold', marginTop: 0, marginBottom: '16px', textAlign: 'center', textTransform: 'uppercase' }}>Semi-Final 1</h3>
                 {semiFinal1.map((m: any) => renderMatchCard(m, true))}
-                {/* Connector line to the right */}
-                <div style={{ position: 'absolute', right: '-40px', top: '50%', width: '40px', height: '2px', background: '#C9A959' }}></div>
               </div>
             )}
 
             {/* Semi-Final 2 Box */}
             {semiFinal2.length > 0 && (
-              <div style={{ border: '2px solid #C9A959', borderRadius: '8px', padding: '16px', background: 'rgba(201, 169, 89, 0.05)', position: 'relative' }}>
+              <div style={{ border: '2px solid #C9A959', borderRadius: '8px', padding: '16px', background: 'rgba(201, 169, 89, 0.05)' }}>
                 <h3 style={{ color: '#C9A959', fontSize: '16px', fontWeight: 'bold', marginTop: 0, marginBottom: '16px', textAlign: 'center', textTransform: 'uppercase' }}>Semi-Final 2</h3>
                 {semiFinal2.map((m: any) => renderMatchCard(m, true))}
-                {/* Connector line to the right */}
-                <div style={{ position: 'absolute', right: '-40px', top: '50%', width: '40px', height: '2px', background: '#C9A959' }}></div>
               </div>
-            )}
-
-            {/* Vertical connector between SF1 and SF2 */}
-            {semiFinal1.length > 0 && semiFinal2.length > 0 && (
-              <div style={{ 
-                position: 'absolute', 
-                right: '-40px', 
-                top: `${100 / (semiFinal1.length + semiFinal2.length) * semiFinal1.length}%`, 
-                height: `${100 / (semiFinal1.length + semiFinal2.length) * semiFinal2.length}%`, 
-                width: '2px', 
-                background: '#C9A959',
-                transform: 'translateY(-50%)'
-              }}></div>
             )}
           </div>
         )}
 
-        {/* Final Section - With more spacing */}
+        {/* Final Section */}
         {finalMatches.length > 0 && (
-          <div style={{ minWidth: '300px', display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative', paddingLeft: '20px' }}>
-             {/* Gold Line connecting from Semis - longer and more visible */}
-             <div style={{ 
-               position: 'absolute', 
-               left: '-60px', 
-               top: '50%', 
-               width: '60px', 
-               height: '3px', 
-               background: '#C9A959',
-               boxShadow: '0 0 10px rgba(201, 169, 89, 0.5)'
-             }}></div>
-
+          <div style={{ minWidth: '300px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             <div style={{ border: '3px solid #C9A959', borderRadius: '8px', padding: '24px', background: 'rgba(201, 169, 89, 0.1)', width: '100%', boxShadow: '0 0 20px rgba(201, 169, 89, 0.3)' }}>
               <h3 style={{ color: '#C9A959', fontSize: '20px', fontWeight: 'bold', marginTop: 0, marginBottom: '20px', textAlign: 'center', textTransform: 'uppercase', letterSpacing: '2px' }}>The Final</h3>
               {finalMatches.map((m: any) => renderMatchCard(m, true))}
