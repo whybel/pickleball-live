@@ -10,7 +10,6 @@ export default function Home() {
   const [competitionName, setCompetitionName] = useState("PickleballLive Tournament");
   const [loading, setLoading] = useState(true);
   
-  // Display Settings
   const [showTeamName, setShowTeamName] = useState(true);
   const [showPlayerName, setShowPlayerName] = useState(true);
 
@@ -54,12 +53,28 @@ export default function Home() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+      {/* Print Styles */}
+      <style>{`
+        @media print {
+          @page { margin: 1cm; size: auto; }
+          body { background-color: #0a0a0a !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .no-print { display: none !important; }
+          .match-box { 
+            break-inside: avoid; 
+            page-break-inside: avoid; 
+            margin-bottom: 16px !important;
+            border: 1px solid #C9A959 !important;
+          }
+          nav { display: none !important; }
+        }
+      `}</style>
+
       <div style={{ borderBottom: '1px solid #1a1a1a', paddingBottom: '24px' }}>
         <h1 style={{ fontSize: '32px', fontWeight: 'bold', color: '#ffffff', margin: '0 0 8px 0' }}>{competitionName}</h1>
         <p style={{ color: '#888888', fontSize: '14px', margin: 0 }}>Live scores and results</p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px' }}>
+      <div className="no-print" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px' }}>
         <div style={{ background: '#111111', border: '1px solid #1a1a1a', borderRadius: '4px', padding: '16px' }}>
           <label style={{ display: 'block', fontSize: '11px', color: '#888888', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>Follow Your Team</label>
           <select value={selectedTeam} onChange={(e) => setSelectedTeam(e.target.value)} style={{ width: '100%', padding: '10px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', fontSize: '14px' }}>
@@ -79,9 +94,8 @@ export default function Home() {
         <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#ffffff', marginBottom: '24px' }}>LIVE & UPCOMING MATCHES</h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {filteredMatches.map((match: any) => (
-            <div key={match.id} style={{ background: '#111111', border: match.is_knockout ? '1px solid #C9A959' : '1px solid #1a1a1a', borderRadius: '4px', padding: '20px' }}>
+            <div key={match.id} className="match-box" style={{ background: '#111111', border: match.is_knockout ? '1px solid #C9A959' : '1px solid #1a1a1a', borderRadius: '4px', padding: '20px' }}>
               
-              {/* Match Header */}
               <div style={{ marginBottom: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                   <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959' }}>
@@ -92,13 +106,11 @@ export default function Home() {
                 <div style={{ fontSize: '12px', color: '#888888' }}>{match.court} | {match.scheduled_time}</div>
               </div>
 
-              {/* Teams and Score Layout */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 0' }}>
-                {/* Team 1 Side */}
                 <div style={{ flex: 1, textAlign: 'center' }}>
                   {showTeamName && (
                     <div style={{ fontSize: '16px', fontWeight: '600', color: match.winner_id === match.team1_id ? '#C9A959' : '#ffffff', marginBottom: showPlayerName ? '4px' : '0' }}>
-                      {match.team1?.name || 'TBD'}
+                      {match.team1_custom_name || match.team1?.name || 'TBD'}
                     </div>
                   )}
                   {showPlayerName && (
@@ -108,7 +120,6 @@ export default function Home() {
                   )}
                 </div>
 
-                {/* Score */}
                 <div style={{ textAlign: 'center', minWidth: '120px' }}>
                   {match.status === 'completed' || match.status === 'live' ? (
                     <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#ffffff' }}>{match.team1_score} - {match.team2_score}</div>
@@ -117,11 +128,10 @@ export default function Home() {
                   )}
                 </div>
 
-                {/* Team 2 Side */}
                 <div style={{ flex: 1, textAlign: 'center' }}>
                   {showTeamName && (
                     <div style={{ fontSize: '16px', fontWeight: '600', color: match.winner_id === match.team2_id ? '#C9A959' : '#ffffff', marginBottom: showPlayerName ? '4px' : '0' }}>
-                      {match.team2?.name || 'TBD'}
+                      {match.team2_custom_name || match.team2?.name || 'TBD'}
                     </div>
                   )}
                   {showPlayerName && (
