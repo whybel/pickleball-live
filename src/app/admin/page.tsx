@@ -89,6 +89,17 @@ export default function AdminPage() {
     alert("Live display settings saved!");
   };
 
+  const wipeCompetition = async () => {
+    if (!confirm("WARNING: This will DELETE all matches and standings for the current competition. This cannot be undone.")) return;
+    if (!confirm("Are you absolutely sure? This will clear the database for this tournament.")) return;
+
+    await supabase.from("matches").delete().eq("competition_id", currentCompId);
+    await supabase.from("group_standings").delete().eq("competition_id", currentCompId);
+    
+    alert("Competition data wiped successfully. You can now import a fresh database.");
+    fetchData();
+  };
+
   const addMatch = async () => {
     const isKnockout = newMatchType === 'knockout';
     const maxMatchNum = matches.length > 0 ? Math.max(...matches.map(m => m.match_number)) : 0;
@@ -128,12 +139,10 @@ export default function AdminPage() {
     fetchData();
   };
 
-  // EXPORT DATABASE FUNCTION
   const exportDatabase = async () => {
     if (!currentCompId) return alert("No competition selected");
     
     try {
-      // Fetch all data
       const { data: competition } = await supabase.from("competitions").select("*").eq("id", currentCompId).single();
       const { data: matchesData } = await supabase.from("matches").select("*").eq("competition_id", currentCompId);
       const { data: teamsData } = await supabase.from("teams").select("*");
@@ -147,7 +156,6 @@ export default function AdminPage() {
         standings: standingsData || []
       };
 
-      // Create and download JSON file
       const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -165,7 +173,7 @@ export default function AdminPage() {
     }
   };
 
-  // IMPORT DATABASE FUNCTION
+  // FIXED IMPORT FUNCTION: Archives old tournaments to prevent "multiple active" errors
   const importDatabase = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -174,24 +182,26 @@ export default function AdminPage() {
       const text = await file.text();
       const importData = JSON.parse(text);
 
-      if (!confirm(`Import tournament "${importData.competition?.name}"? This will create a new competition with all matches, teams, and standings.`)) {
+      if (!confirm(`Import tournament "${importData.competition?.name}"? This will archive your current tournament and create a new one.`)) {
         event.target.value = '';
         return;
       }
 
-      // Create new competition
+      // 1. Archive ALL existing competitions so only ONE is active at a time
+      await supabase.from("competitions").update({ status: 'archived' });
+
+      // 2. Create the new competition as the ONLY active one
       const { data: newComp, error: compError } = await supabase.from("competitions").insert([{
         name: importData.competition.name + " (Imported)",
         format_type: importData.competition.format_type,
         competition_type: importData.competition.competition_type,
         show_team_name: importData.competition.show_team_name,
         show_player_name: importData.competition.show_player_name,
-        status: 'active'
+        status: 'active' // Only this one is active now
       }]).select().single();
 
       if (compError) throw compError;
 
-      // Import teams (avoid duplicates)
       const existingTeams: any[] = [];
       for (const team of importData.teams) {
         const { data: existingTeam } = await supabase.from("teams").select("*").eq("name", team.name).single();
@@ -203,7 +213,6 @@ export default function AdminPage() {
         }
       }
 
-      // Import matches with updated team IDs
       for (const match of importData.matches) {
         const team1New = existingTeams.find(t => t.old_id === match.team1_id)?.new_id || match.team1_id;
         const team2New = existingTeams.find(t => t.old_id === match.team2_id)?.new_id || match.team2_id;
@@ -231,7 +240,6 @@ export default function AdminPage() {
         }]);
       }
 
-      // Import standings
       for (const standing of importData.standings) {
         const teamNew = existingTeams.find(t => t.old_id === standing.team_id)?.new_id || standing.team_id;
         await supabase.from("group_standings").insert([{
@@ -247,7 +255,7 @@ export default function AdminPage() {
         }]);
       }
 
-      alert("Tournament imported successfully! Switched to imported competition.");
+      alert("Tournament imported successfully! Old tournament archived.");
       setCurrentCompId(newComp.id);
       fetchCompetitions();
       fetchData();
@@ -329,10 +337,9 @@ export default function AdminPage() {
         <button onClick={() => setIsAuthenticated(false)} style={{ background: 'none', border: 'none', color: '#888888', cursor: 'pointer', fontSize: '12px', textTransform: 'uppercase' }}>Logout</button>
       </div>
 
-      {/* EXPORT/IMPORT SECTION */}
       <div style={{ background: '#111111', border: '2px solid #C9A959', borderRadius: '4px', padding: '24px' }}>
-        <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '16px' }}>💾 Database Backup & Restore</h2>
-        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '16px' }}> Database Backup & Restore</h2>
+        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '16px' }}>
           <button onClick={exportDatabase} style={{ background: '#22c55e', color: '#0a0a0a', border: 'none', padding: '12px 24px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
             📥 Export Database (JSON)
           </button>
@@ -340,11 +347,17 @@ export default function AdminPage() {
             📤 Import Database
             <input type="file" accept=".json" onChange={importDatabase} style={{ display: 'none' }} />
           </label>
-          <span style={{ color: '#888888', fontSize: '12px', flex: 1 }}>Export saves all matches, teams, and standings. Import creates a new competition from backup.</span>
+          <span style={{ color: '#888888', fontSize: '12px', flex: 1 }}>Export saves all data. Import archives old tournaments and creates a new one.</span>
+        </div>
+        
+        <div style={{ borderTop: '1px solid #1a1a1a', paddingTop: '16px' }}>
+          <button onClick={wipeCompetition} style={{ background: '#ef4444', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
+            ⚠️ Wipe Current Competition Data
+          </button>
+          <span style={{ color: '#888888', fontSize: '12px', marginLeft: '16px' }}>Use this to clear all matches/standings before re-importing to avoid duplicates.</span>
         </div>
       </div>
 
-      {/* Tournament Type Selection */}
       <div style={{ background: '#111111', border: '1px solid #1a1a1a', borderRadius: '4px', padding: '24px' }}>
         <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '16px' }}>Tournament Setup</h2>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
