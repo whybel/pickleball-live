@@ -44,6 +44,32 @@ export default function BracketPage() {
     );
   }
 
+  // Helper to calculate the winner of a box (e.g., who won 2 out of 3 matches in the Semi)
+  const getBoxWinner = (boxMatches: any[]) => {
+    if (!boxMatches || boxMatches.length === 0) return null;
+    let t1Wins = 0;
+    let t2Wins = 0;
+    const t1Name = boxMatches[0].team1_custom_name || boxMatches[0].team1?.name || 'TBD';
+    const t2Name = boxMatches[0].team2_custom_name || boxMatches[0].team2?.name || 'TBD';
+    const t1Id = boxMatches[0].team1_id;
+    const t2Id = boxMatches[0].team2_id;
+
+    boxMatches.forEach((m: any) => {
+      if (m.status === 'completed') {
+        if (m.winner_id === t1Id) t1Wins++;
+        if (m.winner_id === t2Id) t2Wins++;
+      }
+    });
+
+    if (t1Wins > t2Wins) return t1Name;
+    if (t2Wins > t1Wins) return t2Name;
+    return null;
+  };
+
+  const sf1Winner = getBoxWinner(semiFinal1);
+  const sf2Winner = getBoxWinner(semiFinal2);
+  const finalWinner = getBoxWinner(finalMatches);
+
   const renderMatchCard = (match: any, isGoldBorder = false) => (
     <div key={match.id} style={{ 
       background: '#111111', 
@@ -84,6 +110,28 @@ export default function BracketPage() {
     </div>
   );
 
+  // Shared styles for consistent box sizing
+  const boxStyle = { 
+    border: '2px solid #C9A959', 
+    borderRadius: '8px', 
+    padding: '16px', 
+    background: 'rgba(201, 169, 89, 0.05)', 
+    minWidth: '280px',
+    maxWidth: '320px'
+  };
+
+  const winnerLabelStyle = {
+    marginTop: '16px',
+    paddingTop: '12px',
+    borderTop: '1px solid #C9A959',
+    textAlign: 'center' as const,
+    color: '#C9A959',
+    fontWeight: 'bold',
+    fontSize: '14px',
+    textTransform: 'uppercase' as const,
+    letterSpacing: '1px'
+  };
+
   return (
     <div style={{ padding: '24px', maxWidth: '1600px', margin: '0 auto' }}>
       <style>{`
@@ -100,7 +148,7 @@ export default function BracketPage() {
       <h1 style={{ fontSize: '32px', fontWeight: 'bold', color: '#ffffff', marginBottom: '8px', textAlign: 'center' }}>KNOCKOUT BRACKET</h1>
       <p style={{ color: '#888888', textAlign: 'center', marginBottom: '40px' }}>Elimination Stage</p>
       
-      {/* DESKTOP VIEW - Horizontal with Final centered */}
+      {/* DESKTOP VIEW */}
       <div className="bracket-desktop" style={{ gap: '60px', alignItems: 'center', overflowX: 'auto', paddingBottom: '40px' }}>
         
         {/* Early Rounds */}
@@ -117,33 +165,38 @@ export default function BracketPage() {
           );
         })}
 
-        {/* Semi-Finals and Final - Centered */}
+        {/* Semi-Finals and Final */}
         {(semiFinal1.length > 0 || semiFinal2.length > 0) && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '60px', flex: 1 }}>
             
             {/* Semi-Final Boxes */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '40px' }}>
               {semiFinal1.length > 0 && (
-                <div style={{ border: '2px solid #C9A959', borderRadius: '8px', padding: '16px', background: 'rgba(201, 169, 89, 0.05)', minWidth: '280px' }}>
+                <div style={boxStyle}>
                   <h3 style={{ color: '#C9A959', fontSize: '16px', fontWeight: 'bold', marginTop: 0, marginBottom: '16px', textAlign: 'center', textTransform: 'uppercase' }}>Semi-Final 1</h3>
                   {semiFinal1.map((m: any) => renderMatchCard(m, true))}
+                  {sf1Winner && <div style={winnerLabelStyle}>Winner: {sf1Winner}</div>}
                 </div>
               )}
               {semiFinal2.length > 0 && (
-                <div style={{ border: '2px solid #C9A959', borderRadius: '8px', padding: '16px', background: 'rgba(201, 169, 89, 0.05)', minWidth: '280px' }}>
+                <div style={boxStyle}>
                   <h3 style={{ color: '#C9A959', fontSize: '16px', fontWeight: 'bold', marginTop: 0, marginBottom: '16px', textAlign: 'center', textTransform: 'uppercase' }}>Semi-Final 2</h3>
                   {semiFinal2.map((m: any) => renderMatchCard(m, true))}
+                  {sf2Winner && <div style={winnerLabelStyle}>Winner: {sf2Winner}</div>}
                 </div>
               )}
             </div>
 
-            {/* Final Box - Centered */}
+            {/* Final Box - Same size as Semis */}
             {finalMatches.length > 0 && (
-              <div style={{ border: '3px solid #C9A959', borderRadius: '8px', padding: '24px', background: 'rgba(201, 169, 89, 0.1)', minWidth: '300px', boxShadow: '0 0 20px rgba(201, 169, 89, 0.3)' }}>
-                <h3 style={{ color: '#C9A959', fontSize: '20px', fontWeight: 'bold', marginTop: 0, marginBottom: '20px', textAlign: 'center', textTransform: 'uppercase', letterSpacing: '2px' }}>The Final</h3>
+              <div style={boxStyle}>
+                <h3 style={{ color: '#C9A959', fontSize: '16px', fontWeight: 'bold', marginTop: 0, marginBottom: '16px', textAlign: 'center', textTransform: 'uppercase', letterSpacing: '2px' }}>The Final</h3>
                 {finalMatches.map((m: any) => renderMatchCard(m, true))}
-                {finalMatches[0]?.status === 'completed' && (
-                  <div style={{ textAlign: 'center', marginTop: '20px', fontSize: '32px' }}>🏆</div>
+                {finalWinner && (
+                  <div style={{ ...winnerLabelStyle, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginTop: '20px' }}>
+                    <span>Champion: {finalWinner}</span> 
+                    <span style={{ fontSize: '24px' }}>🏆</span>
+                  </div>
                 )}
               </div>
             )}
@@ -151,10 +204,8 @@ export default function BracketPage() {
         )}
       </div>
 
-      {/* MOBILE VIEW - Vertical stacking */}
+      {/* MOBILE VIEW */}
       <div className="bracket-mobile" style={{ flexDirection: 'column', gap: '32px' }}>
-        
-        {/* Early Rounds */}
         {rounds.map((round) => {
           const roundMatches = matchesByRound[round];
           if (!roundMatches || roundMatches.length === 0) return null;
@@ -168,29 +219,31 @@ export default function BracketPage() {
           );
         })}
 
-        {/* Semi-Final 1 */}
         {semiFinal1.length > 0 && (
-          <div style={{ border: '2px solid #C9A959', borderRadius: '8px', padding: '16px', background: 'rgba(201, 169, 89, 0.05)', width: '100%' }}>
+          <div style={{ ...boxStyle, width: '100%', maxWidth: '100%' }}>
             <h3 style={{ color: '#C9A959', fontSize: '16px', fontWeight: 'bold', marginTop: 0, marginBottom: '16px', textAlign: 'center', textTransform: 'uppercase' }}>Semi-Final 1</h3>
             {semiFinal1.map((m: any) => renderMatchCard(m, true))}
+            {sf1Winner && <div style={winnerLabelStyle}>Winner: {sf1Winner}</div>}
           </div>
         )}
 
-        {/* Semi-Final 2 */}
         {semiFinal2.length > 0 && (
-          <div style={{ border: '2px solid #C9A959', borderRadius: '8px', padding: '16px', background: 'rgba(201, 169, 89, 0.05)', width: '100%' }}>
+          <div style={{ ...boxStyle, width: '100%', maxWidth: '100%' }}>
             <h3 style={{ color: '#C9A959', fontSize: '16px', fontWeight: 'bold', marginTop: 0, marginBottom: '16px', textAlign: 'center', textTransform: 'uppercase' }}>Semi-Final 2</h3>
             {semiFinal2.map((m: any) => renderMatchCard(m, true))}
+            {sf2Winner && <div style={winnerLabelStyle}>Winner: {sf2Winner}</div>}
           </div>
         )}
 
-        {/* Final */}
         {finalMatches.length > 0 && (
-          <div style={{ border: '3px solid #C9A959', borderRadius: '8px', padding: '24px', background: 'rgba(201, 169, 89, 0.1)', width: '100%', boxShadow: '0 0 20px rgba(201, 169, 89, 0.3)' }}>
-            <h3 style={{ color: '#C9A959', fontSize: '20px', fontWeight: 'bold', marginTop: 0, marginBottom: '20px', textAlign: 'center', textTransform: 'uppercase', letterSpacing: '2px' }}>The Final</h3>
+          <div style={{ ...boxStyle, width: '100%', maxWidth: '100%' }}>
+            <h3 style={{ color: '#C9A959', fontSize: '16px', fontWeight: 'bold', marginTop: 0, marginBottom: '16px', textAlign: 'center', textTransform: 'uppercase', letterSpacing: '2px' }}>The Final</h3>
             {finalMatches.map((m: any) => renderMatchCard(m, true))}
-            {finalMatches[0]?.status === 'completed' && (
-              <div style={{ textAlign: 'center', marginTop: '20px', fontSize: '32px' }}>🏆</div>
+            {finalWinner && (
+              <div style={{ ...winnerLabelStyle, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginTop: '20px' }}>
+                <span>Champion: {finalWinner}</span> 
+                <span style={{ fontSize: '24px' }}>🏆</span>
+              </div>
             )}
           </div>
         )}
