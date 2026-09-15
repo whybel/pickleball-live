@@ -20,50 +20,124 @@ export default function BracketPage() {
 
   if (loading) return <div style={{ textAlign: 'center', padding: '48px', color: '#C9A959' }}>Loading Bracket...</div>;
 
-  // Dynamically get all unique rounds present in the data
-  const rounds = [...new Set(knockoutMatches.map(m => m.knockout_round || m.round))].sort();
+  // Group matches by round
+  const rounds = ["R128", "R64", "R32", "R16", "Quarter-Final", "Semi-Final", "Final"];
+  const matchesByRound: any = {};
+  
+  rounds.forEach(round => {
+    matchesByRound[round] = knockoutMatches.filter(m => m.knockout_round === round || m.round === round);
+  });
+
+  const hasMatches = Object.values(matchesByRound).some((roundMatches: any) => roundMatches.length > 0);
+
+  if (!hasMatches) {
+    return (
+      <div style={{ textAlign: 'center', padding: '48px', color: '#888888' }}>
+        <h1 style={{ fontSize: '32px', fontWeight: 'bold', color: '#ffffff', marginBottom: '16px' }}>KNOCKOUT BRACKET</h1>
+        <p>Knockout stage has not been set up yet.</p>
+        <p style={{ fontSize: '14px', marginTop: '8px' }}>Go to Admin to generate knockout matches.</p>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
-      <div style={{ borderBottom: '1px solid #1a1a1a', paddingBottom: '24px' }}>
-        <h1 style={{ fontSize: '32px', fontWeight: 'bold', color: '#ffffff', margin: '0 0 8px 0' }}>KNOCKOUT BRACKET</h1>
-        <p style={{ color: '#888888', fontSize: '14px', margin: 0 }}>Elimination Stage</p>
-      </div>
+    <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
+      <h1 style={{ fontSize: '32px', fontWeight: 'bold', color: '#ffffff', marginBottom: '8px', textAlign: 'center' }}>KNOCKOUT BRACKET</h1>
+      <p style={{ color: '#888888', textAlign: 'center', marginBottom: '32px' }}>Elimination Stage</p>
+      
+      {/* Bracket Container - Horizontal Scroll for Mobile */}
+      <div style={{ overflowX: 'auto', paddingBottom: '24px' }}>
+        <div style={{ minWidth: '800px', display: 'flex', gap: '24px', alignItems: 'center' }}>
+          
+          {rounds.map((round) => {
+            const roundMatches = matchesByRound[round];
+            if (!roundMatches || roundMatches.length === 0) return null;
 
-      {rounds.map((round) => {
-        const roundMatches = knockoutMatches.filter(m => (m.knockout_round === round || m.round === round));
-        if (roundMatches.length === 0) return null;
-
-        return (
-          <div key={round} style={{ background: '#111111', border: '1px solid #1a1a1a', borderRadius: '4px', padding: '24px' }}>
-            <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '20px', textTransform: 'uppercase' }}>{round}</h2>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px' }}>
-              {roundMatches.map((match: any) => (
-                <div key={match.id} style={{ background: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: '4px', padding: '16px' }}>
-                  <div style={{ fontSize: '12px', color: '#888888', marginBottom: '12px' }}>Match #{match.match_number} • {match.category} • {match.court}</div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                    <span style={{ fontSize: '14px', fontWeight: '600', color: match.winner_id === match.team1_id ? '#C9A959' : '#ffffff' }}>{match.team1_custom_name || match.team1?.name || 'TBD'}</span>
-                    <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>{match.status === 'completed' ? match.team1_score : '-'}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '14px', fontWeight: '600', color: match.winner_id === match.team2_id ? '#C9A959' : '#ffffff' }}>{match.team2_custom_name || match.team2?.name || 'TBD'}</span>
-                    <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>{match.status === 'completed' ? match.team2_score : '-'}</span>
-                  </div>
-                  {match.status === 'completed' && (
-                    <div style={{ marginTop: '12px', paddingTop: '8px', borderTop: '1px solid #1a1a1a', textAlign: 'center', fontSize: '11px', color: '#22c55e', textTransform: 'uppercase' }}>
-                      Winner: {match.winner_id === match.team1_id ? match.team1?.name : match.team2?.name}
-                    </div>
-                  )}
+            return (
+              <div key={round} style={{ flex: 1, minWidth: '200px' }}>
+                <div style={{ 
+                  background: 'rgba(201, 169, 89, 0.15)', 
+                  padding: '12px 16px', 
+                  borderBottom: '2px solid #C9A959', 
+                  textAlign: 'center',
+                  marginBottom: '16px',
+                  borderRadius: '4px 4px 0 0'
+                }}>
+                  <h2 style={{ fontSize: '14px', fontWeight: 'bold', color: '#C9A959', margin: 0, textTransform: 'uppercase', letterSpacing: '1px' }}>
+                    {round}
+                  </h2>
                 </div>
-              ))}
-            </div>
-          </div>
-        );
-      })}
-
-      {knockoutMatches.length === 0 && (
-        <div style={{ textAlign: 'center', padding: '48px', color: '#888888' }}>Knockout stage has not been set up yet. Go to Admin to generate matches.</div>
-      )}
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {roundMatches.map((match: any, index: number) => (
+                    <div key={match.id} style={{ 
+                      background: '#111111', 
+                      border: match.status === 'completed' ? '2px solid #C9A959' : '1px solid #1a1a1a', 
+                      borderRadius: '4px', 
+                      padding: '16px',
+                      position: 'relative'
+                    }}>
+                      {/* Match Number */}
+                      <div style={{ fontSize: '10px', color: '#888888', marginBottom: '8px', textTransform: 'uppercase' }}>
+                        Match #{match.match_number}
+                      </div>
+                      
+                      {/* Team 1 */}
+                      <div style={{ 
+                        padding: '8px 12px', 
+                        background: match.winner_id === match.team1_id ? 'rgba(201, 169, 89, 0.2)' : 'transparent',
+                        borderRadius: '4px',
+                        marginBottom: '4px',
+                        border: match.winner_id === match.team1_id ? '1px solid #C9A959' : 'none'
+                      }}>
+                        <div style={{ fontSize: '13px', fontWeight: '600', color: match.winner_id === match.team1_id ? '#C9A959' : '#ffffff' }}>
+                          {match.team1_custom_name || match.team1?.name || 'TBD'}
+                        </div>
+                        {match.status === 'completed' && (
+                          <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff', textAlign: 'right' }}>
+                            {match.team1_score}
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Team 2 */}
+                      <div style={{ 
+                        padding: '8px 12px', 
+                        background: match.winner_id === match.team2_id ? 'rgba(201, 169, 89, 0.2)' : 'transparent',
+                        borderRadius: '4px',
+                        border: match.winner_id === match.team2_id ? '1px solid #C9A959' : 'none'
+                      }}>
+                        <div style={{ fontSize: '13px', fontWeight: '600', color: match.winner_id === match.team2_id ? '#C9A959' : '#ffffff' }}>
+                          {match.team2_custom_name || match.team2?.name || 'TBD'}
+                        </div>
+                        {match.status === 'completed' && (
+                          <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff', textAlign: 'right' }}>
+                            {match.team2_score}
+                          </div>
+                        )}
+                      </div>
+                      
+                      {match.status === 'completed' && match.knockout_round === 'Final' && (
+                        <div style={{ 
+                          marginTop: '12px', 
+                          textAlign: 'center', 
+                          padding: '8px', 
+                          background: 'rgba(201, 169, 89, 0.2)', 
+                          borderRadius: '4px',
+                          border: '1px solid #C9A959'
+                        }}>
+                          <div style={{ fontSize: '24px', marginBottom: '4px' }}></div>
+                          <div style={{ fontSize: '11px', color: '#C9A959', textTransform: 'uppercase', fontWeight: 'bold' }}>CHAMPION</div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

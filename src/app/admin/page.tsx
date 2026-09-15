@@ -20,6 +20,10 @@ export default function AdminPage() {
   const [newMatchCourt, setNewMatchCourt] = useState("Court 1");
   const [newMatchTime, setNewMatchTime] = useState("4:30 PM");
 
+  // Tournament Setup Options
+  const [tournamentFormat, setTournamentFormat] = useState("round_robin_knockout"); // round_robin_knockout, direct_knockout, league, friendly
+  const [tournamentType, setTournamentType] = useState("tournament"); // tournament, friendly
+
   const categories = ["Singles", "Doubles", "Men's Singles", "Men's Doubles", "Women's Singles", "Women's Doubles", "Mixed Doubles"];
   const [selectedKnockoutCategories, setSelectedKnockoutCategories] = useState<string[]>(["Singles", "Doubles"]);
   const knockoutRounds = ["R128", "R64", "R32", "R16", "Quarter-Final", "Semi-Final", "Final"];
@@ -39,6 +43,8 @@ export default function AdminPage() {
       setCurrentCompId(activeComp.id);
       setShowTeamName(activeComp.show_team_name !== false);
       setShowPlayerName(activeComp.show_player_name !== false);
+      setTournamentFormat(activeComp.format_type || "round_robin_knockout");
+      setTournamentType(activeComp.competition_type || "tournament");
     }
   };
 
@@ -126,35 +132,50 @@ export default function AdminPage() {
   const groupMatches = matches.filter(m => !m.is_knockout);
   const knockoutMatches = matches.filter(m => m.is_knockout);
 
-  // Fixed TeamSelect Component with Local State to prevent dropdown reverting
+  // Fixed TeamSelect Component - Uses local state that doesn't reset on data fetch
   const TeamSelect = ({ matchId, teamId, customName, teamNum, teamsList }: any) => {
-    const [isCustomMode, setIsCustomMode] = useState(!!customName);
+    const [localCustomMode, setLocalCustomMode] = useState(!!customName);
+    const [localCustomValue, setLocalCustomValue] = useState(customName || '');
+
+    // Update local state when prop changes
+    useEffect(() => {
+      setLocalCustomMode(!!customName);
+      setLocalCustomValue(customName || '');
+    }, [customName]);
+
+    const handleCustomNameChange = async (value: string) => {
+      setLocalCustomValue(value);
+      await updateMatch(matchId, `team${teamNum}_custom_name`, value);
+    };
+
+    const handleDropdownChange = async (value: string) => {
+      if (value === 'custom') {
+        setLocalCustomMode(true);
+        await updateMatch(matchId, `team${teamNum}_id`, null);
+      } else {
+        setLocalCustomMode(false);
+        setLocalCustomValue('');
+        await updateMatch(matchId, `team${teamNum}_id`, value || null);
+        await updateMatch(matchId, `team${teamNum}_custom_name`, '');
+      }
+    };
 
     return (
       <div>
         <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '4px' }}>Team {teamNum}</label>
         <select 
-          value={isCustomMode ? 'custom' : (teamId || '')} 
-          onChange={(e) => {
-            if (e.target.value === 'custom') {
-              setIsCustomMode(true);
-              updateMatch(matchId, `team${teamNum}_id`, null);
-            } else {
-              setIsCustomMode(false);
-              updateMatch(matchId, `team${teamNum}_id`, e.target.value || null);
-              updateMatch(matchId, `team${teamNum}_custom_name`, '');
-            }
-          }} 
-          style={{ width: '100%', padding: '8px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', marginBottom: isCustomMode ? '8px' : '0' }}
+          value={localCustomMode ? 'custom' : (teamId || '')} 
+          onChange={(e) => handleDropdownChange(e.target.value)}
+          style={{ width: '100%', padding: '8px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', marginBottom: localCustomMode ? '8px' : '0' }}
         >
           <option value="">Select Team</option>
           {teamsList.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
           <option value="custom">-- Type Custom Name (e.g. Group A Winner) --</option>
         </select>
-        {isCustomMode && (
+        {localCustomMode && (
           <input 
-            value={customName || ''} 
-            onChange={(e) => updateMatch(matchId, `team${teamNum}_custom_name`, e.target.value)} 
+            value={localCustomValue} 
+            onChange={(e) => handleCustomNameChange(e.target.value)}
             placeholder="Enter custom name..." 
             style={{ width: '100%', padding: '8px', background: '#111111', border: '1px solid #C9A959', color: 'white', borderRadius: '4px', boxSizing: 'border-box' }} 
           />
@@ -180,6 +201,33 @@ export default function AdminPage() {
         <button onClick={() => setIsAuthenticated(false)} style={{ background: 'none', border: 'none', color: '#888888', cursor: 'pointer', fontSize: '12px', textTransform: 'uppercase' }}>Logout</button>
       </div>
 
+      {/* Tournament Type Selection */}
+      <div style={{ background: '#111111', border: '1px solid #1a1a1a', borderRadius: '4px', padding: '24px' }}>
+        <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '16px' }}>Tournament Setup</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '8px' }}>Competition Type</label>
+            <select value={tournamentType} onChange={(e) => setTournamentType(e.target.value)} style={{ width: '100%', padding: '10px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
+              <option value="tournament">Tournament</option>
+              <option value="friendly">Friendly Match</option>
+            </select>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '8px' }}>Format</label>
+            <select value={tournamentFormat} onChange={(e) => setTournamentFormat(e.target.value)} style={{ width: '100%', padding: '10px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
+              <option value="round_robin_knockout">Round Robin → Knockout</option>
+              <option value="direct_knockout">Direct Knockout</option>
+              <option value="league">League (Round Robin Only)</option>
+              <option value="friendly">Friendly</option>
+            </select>
+          </div>
+        </div>
+        <button onClick={async () => {
+          await supabase.from("competitions").update({ format_type: tournamentFormat, competition_type: tournamentType }).eq("id", currentCompId);
+          alert("Tournament format saved!");
+        }} style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '10px 20px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Save Format</button>
+      </div>
+
       <div style={{ background: '#111111', border: '1px solid #1a1a1a', borderRadius: '4px', padding: '24px' }}>
         <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '16px' }}>Live Screen Display Settings</h2>
         <div style={{ display: 'flex', gap: '24px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -196,7 +244,6 @@ export default function AdminPage() {
       <div style={{ background: '#111111', border: '1px solid #C9A959', borderRadius: '4px', padding: '24px' }}>
         <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '16px' }}>Knockout Stage Manager</h2>
         
-        {/* Dynamic Category Selection for Auto-Generate */}
         <div style={{ marginBottom: '20px', display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
           <span style={{ color: '#888888', fontSize: '12px', textTransform: 'uppercase' }}>Categories to Generate:</span>
           {categories.map(cat => (
@@ -325,15 +372,12 @@ export default function AdminPage() {
                   <div style={{ background: '#0a0a0a', padding: '16px', borderRadius: '4px', marginBottom: '12px', border: '1px solid #1a1a1a', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                     <TeamSelect matchId={match.id} teamId={match.team1_id} customName={match.team1_custom_name} teamNum={1} teamsList={teams} />
                     <TeamSelect matchId={match.id} teamId={match.team2_id} customName={match.team2_custom_name} teamNum={2} teamsList={teams} />
-                    
-                    {/* ADDED: Category Dropdown for Knockout Edit Form */}
                     <div style={{ gridColumn: '1 / -1' }}>
                       <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '4px' }}>Category</label>
                       <select value={match.category} onChange={(e) => updateMatch(match.id, 'category', e.target.value)} style={{ width: '100%', padding: '8px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
                         {categories.map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
                     </div>
-
                     <div>
                       <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '4px' }}>Player/s (Team 1)</label>
                       <input defaultValue={match.team1_players || ''} onBlur={(e) => updateMatch(match.id, 'team1_players', e.target.value)} style={{ width: '100%', padding: '8px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', boxSizing: 'border-box' }} />
