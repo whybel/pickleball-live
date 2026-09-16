@@ -204,6 +204,13 @@ export default function AdminPage() {
     else fetchData();
   };
 
+  const updateLiveScore = async (matchId: string, t1: number, t2: number) => {
+    await supabase.from("matches").update({ team1_score: t1, team2_score: t2, status: "live" }).eq("id", matchId);
+    fetchData();
+  };
+
+  const completeMatch = async (matchId: string, t1: number, t2: number, t1Id: string, t2Id: string) => {
+
   const completeMatch = async (matchId: string, t1: number, t2: number, t1Id: string, t2Id: string) => {
   const winner = t1 > t2 ? t1Id : t2Id;
   
@@ -623,7 +630,26 @@ export default function AdminPage() {
                     <div style={{ fontSize: '12px', color: '#888888', marginTop: '4px' }}>Player/s: {match.team2_players || '-'}</div>
                     <input type="number" id={`t2-${match.id}`} defaultValue={match.team2_score || 0} style={{ width: '60px', padding: '8px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', textAlign: 'center', marginTop: '8px' }} />
                   </div>
-                  <button onClick={() => { const s1 = parseInt((document.getElementById(`t1-${match.id}`) as HTMLInputElement).value); const s2 = parseInt((document.getElementById(`t2-${match.id}`) as HTMLInputElement).value); if(!isNaN(s1) && !isNaN(s2)) completeMatch(match.id, s1, s2, match.team1_id, match.team2_id); }} style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Complete</button>
+                  <button 
+                    onClick={() => { 
+                      const s1 = parseInt((document.getElementById(`t1-${match.id}`) as HTMLInputElement).value); 
+                      const s2 = parseInt((document.getElementById(`t2-${match.id}`) as HTMLInputElement).value); 
+                      if(!isNaN(s1) && !isNaN(s2)) updateLiveScore(match.id, s1, s2); 
+                    }} 
+                    style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginRight: '8px' }}
+                  >
+                    Update Live Score
+                  </button>
+                  <button 
+                    onClick={() => { 
+                      const s1 = parseInt((document.getElementById(`t1-${match.id}`) as HTMLInputElement).value); 
+                      const s2 = parseInt((document.getElementById(`t2-${match.id}`) as HTMLInputElement).value); 
+                      if(!isNaN(s1) && !isNaN(s2)) completeMatch(match.id, s1, s2, match.team1_id, match.team2_id); 
+                    }} 
+                    style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}
+                  >
+                    Complete
+                  </button> as HTMLInputElement).value); const s2 = parseInt((document.getElementById(`t2-${match.id}`) as HTMLInputElement).value); if(!isNaN(s1) && !isNaN(s2)) completeMatch(match.id, s1, s2, match.team1_id, match.team2_id); }} style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Complete</button>
                 </div>
               )}
               {match.status === 'completed' && <div style={{ color: '#22c55e', fontSize: '14px', marginTop: '12px', textAlign: 'center' }}>Completed: {match.team1_score} - {match.team2_score} | Winner: {match.winner_id === match.team1_id ? (match.team1_custom_name || match.team1?.name) : (match.team2_custom_name || match.team2?.name)}</div>}

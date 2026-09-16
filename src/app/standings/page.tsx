@@ -6,26 +6,6 @@ export default function StandingsPage() {
   const [groups, setGroups] = useState<Record<string, any[]>>({});
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchData();
-    
-    // FIX: Listen to the MATCHES table instead of group_standings.
-    // Whenever a score is updated or a match is completed, this fires instantly.
-    const channel = supabase
-      .channel("public:matches")
-      .on("postgres_changes", 
-        { event: "*", schema: "public", table: "matches" }, 
-        () => {
-          fetchData();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
   const fetchData = async () => {
     const { data: comp } = await supabase
       .from("competitions")
@@ -60,6 +40,38 @@ export default function StandingsPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchData();
+    
+    // 1. Realtime Subscription (Listens to both tables)
+    const channel = supabase
+      .channel("public:standings_and_matches")
+      .on("postgres_changes", 
+        { event: "*", schema: "public", table: "group_standings" }, 
+        () => {
+          fetchData(); // Instant update when standings table changes
+        }
+      )
+      .on("postgres_changes", 
+        { event: "*", schema: "public", table: "matches" }, 
+        () => {
+          // Wait 500ms for the SQL function to finish updating standings
+          setTimeout(fetchData, 500); 
+        }
+      )
+      .subscribe();
+
+    // 2. Polling Fallback (Checks every 3 seconds to guarantee updates)
+    const interval = setInterval(() => {
+      fetchData();
+    }, 3000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(interval);
+    };
+  }, []);
 
   if (loading) {
     return <div style={{ textAlign: 'center', padding: '48px', color: '#C9A959' }}>Loading standings...</div>;
