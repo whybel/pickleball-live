@@ -9,14 +9,21 @@ export default function StandingsPage() {
   useEffect(() => {
     fetchData();
     
+    // Set up real-time subscription
     const channel = supabase
       .channel("public:group_standings")
-      .on("postgres_changes", { event: "*", schema: "public", table: "group_standings" }, () => {
-        fetchData();
-      })
+      .on("postgres_changes", 
+        { event: "*", schema: "public", table: "group_standings" }, 
+        () => {
+          console.log("Standings changed, refetching...");
+          fetchData();
+        }
+      )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const fetchData = async () => {
@@ -38,6 +45,7 @@ export default function StandingsPage() {
         return acc;
       }, {});
 
+      // Sort each group: 1. Wins (Desc), 2. Point Diff (Desc), 3. Points For (Desc)
       Object.keys(grouped).forEach(group => {
         grouped[group].sort((a, b) => {
           if (b.wins !== a.wins) return b.wins - a.wins;
@@ -57,7 +65,6 @@ export default function StandingsPage() {
     return <div style={{ textAlign: 'center', padding: '48px', color: '#C9A959' }}>Loading standings...</div>;
   }
 
-  // Flexible grid columns that always fit 100% width without scrolling
   const gridCols = '8% 32% 10% 10% 10% 10% 10% 10%';
 
   return (
@@ -76,7 +83,6 @@ export default function StandingsPage() {
               </h2>
             </div>
             
-            {/* Table Header */}
             <div style={{ 
               display: 'grid', 
               gridTemplateColumns: gridCols, 
@@ -99,7 +105,6 @@ export default function StandingsPage() {
               <div style={{ textAlign: 'center' }}>Diff</div>
             </div>
 
-            {/* Table Rows */}
             <div>
               {groups[group].map((team: any, index: number) => {
                 const diff = (team.points_for || 0) - (team.points_against || 0);

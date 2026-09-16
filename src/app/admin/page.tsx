@@ -205,11 +205,25 @@ export default function AdminPage() {
   };
 
   const completeMatch = async (matchId: string, t1: number, t2: number, t1Id: string, t2Id: string) => {
-    const winner = t1 > t2 ? t1Id : t2Id;
-    await supabase.from("matches").update({ team1_score: t1, team2_score: t2, winner_id: winner, status: "completed" }).eq("id", matchId);
-    if (!matches.find(m => m.id === matchId)?.is_knockout) await recalculateStandings();
-    fetchData();
-  };
+  const winner = t1 > t2 ? t1Id : t2Id;
+  
+  // Update match
+  await supabase.from("matches").update({ 
+    team1_score: t1, 
+    team2_score: t2, 
+    winner_id: winner, 
+    status: "completed" 
+  }).eq("id", matchId);
+  
+  // Recalculate standings if not knockout
+  if (!matches.find(m => m.id === matchId)?.is_knockout) {
+    await recalculateStandings();
+    // Small delay to ensure database update completes
+    await new Promise(resolve => setTimeout(resolve, 300));
+  }
+  
+  fetchData();
+};
 
   const exportDatabase = async () => {
     if (!currentCompId) return alert("No competition selected");
