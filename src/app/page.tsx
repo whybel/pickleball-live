@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 
 export default function Home() {
@@ -16,7 +16,7 @@ export default function Home() {
   const categories = ["All Categories", "Singles", "Doubles", "Men's Singles", "Men's Doubles", "Women's Singles", "Women's Doubles", "Mixed Doubles"];
 
   // Centralized fetch function
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     const { data: m } = await supabase.from("matches").select("*, team1:team1_id(name), team2:team2_id(name)").order("match_number");
     const { data: t } = await supabase.from("teams").select("*").order("name");
     const { data: settings } = await supabase.from("competitions").select("*").eq("status", "active").single();
@@ -29,26 +29,39 @@ export default function Home() {
       setShowPlayerName(settings.show_player_name !== false);
     }
     setLoading(false);
-  };
+  }, []);
 
   useEffect(() => {
     fetchData();
 
-    // Subscribe to ALL changes. If anything changes (score, team name, match setup), refetch everything.
+    // Subscribe to ALL changes. Refetch everything when anything changes.
     const channel = supabase
       .channel("public:all_changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "matches" }, () => fetchData())
-      .on("postgres_changes", { event: "*", schema: "public", table: "teams" }, () => fetchData())
-      .on("postgres_changes", { event: "*", schema: "public", table: "competitions" }, () => fetchData())
+      .on("postgres_changes", { event: "*", schema: "public", table: "matches" }, () => {
+        console.log("Match changed, refetching...");
+        fetchData();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "teams" }, () => {
+        console.log("Team changed, refetching...");
+        fetchData();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "competitions" }, () => {
+        console.log("Competition changed, refetching...");
+        fetchData();
+      })
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [fetchData]);
 
   const filteredMatches = matches.filter((match) => {
-    const teamMatch = selectedTeam === "All Teams" || match.team1?.name === selectedTeam || match.team2?.name === selectedTeam || match.team1_custom_name === selectedTeam || match.team2_custom_name === selectedTeam;
+    const teamMatch = selectedTeam === "All Teams" || 
+      match.team1?.name === selectedTeam || 
+      match.team2?.name === selectedTeam || 
+      match.team1_custom_name === selectedTeam || 
+      match.team2_custom_name === selectedTeam;
     const categoryMatch = selectedCategory === "All Categories" || match.category === selectedCategory;
     return teamMatch && categoryMatch;
   });
