@@ -10,6 +10,7 @@ export default function AdminPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [currentCompId, setCurrentCompId] = useState<string>("");
+  const [competitions, setCompetitions] = useState<any[]>([]);
   
   const [showTeamName, setShowTeamName] = useState(true);
   const [showPlayerName, setShowPlayerName] = useState(true);
@@ -23,6 +24,10 @@ export default function AdminPage() {
   const [tournamentFormat, setTournamentFormat] = useState("round_robin_knockout");
   const [tournamentType, setTournamentType] = useState("tournament");
 
+  // New state for editing tournament name and creating new
+  const [editTournamentName, setEditTournamentName] = useState("");
+  const [newTournamentName, setNewTournamentName] = useState("");
+
   const categories = ["Singles", "Doubles", "Men's Singles", "Men's Doubles", "Women's Singles", "Women's Doubles", "Mixed Doubles"];
   const [selectedKnockoutCategories, setSelectedKnockoutCategories] = useState<string[]>(["Singles", "Doubles"]);
   const knockoutRounds = ["R128", "R64", "R32", "R16", "Quarter-Final", "Semi-Final", "Final"];
@@ -32,18 +37,25 @@ export default function AdminPage() {
   }, [isAuthenticated]);
 
   useEffect(() => {
-    if (isAuthenticated && currentCompId) fetchData();
+    if (isAuthenticated && currentCompId) {
+      fetchData();
+      // Load current tournament name for editing
+      const currentComp = competitions.find(c => c.id === currentCompId);
+      if (currentComp) setEditTournamentName(currentComp.name);
+    }
   }, [isAuthenticated, currentCompId]);
 
   const fetchCompetitions = async () => {
     const { data } = await supabase.from("competitions").select("*").order("created_at", { ascending: false });
     if (data && data.length > 0) {
+      setCompetitions(data);
       const activeComp = data.find((c: any) => c.status === 'active') || data[0];
       setCurrentCompId(activeComp.id);
       setShowTeamName(activeComp.show_team_name !== false);
       setShowPlayerName(activeComp.show_player_name !== false);
       setTournamentFormat(activeComp.format_type || "round_robin_knockout");
       setTournamentType(activeComp.competition_type || "tournament");
+      setEditTournamentName(activeComp.name);
     }
   };
 
@@ -78,9 +90,33 @@ export default function AdminPage() {
   };
 
   const resetMatchScore = async (matchId: string) => {
-    if (!confirm("Reset this match score? Standings will be recalculated.")) return;
+    if (!confirm("Reset this match score?")) return;
     await supabase.from("matches").update({ team1_score: 0, team2_score: 0, winner_id: null, status: "upcoming" }).eq("id", matchId);
     await recalculateStandings();
+    fetchData();
+  };
+
+  // NEW: Reset All Scores (keeps matches, resets scores)
+  const resetAllScores = async () => {
+    if (!confirm("WARNING: This will reset ALL match scores to 0 and clear standings. Matches will remain. Continue?")) return;
+    if (!confirm("Are you sure? This cannot be undone.")) return;
+
+    await supabase.from("matches").update({ 
+      team1_score: 0, 
+      team2_score: 0, 
+      winner_id: null, 
+      status: "upcoming" 
+    }).eq("competition_id", currentCompId);
+    
+    await supabase.from("group_standings").update({
+      matches_played: 0,
+      wins: 0,
+      losses: 0,
+      points_for: 0,
+      points_against: 0
+    }).eq("competition_id", currentCompId);
+    
+    alert("All scores reset successfully! You can now enter sample scores.");
     fetchData();
   };
 
@@ -89,14 +125,50 @@ export default function AdminPage() {
     alert("Live display settings saved!");
   };
 
+  // NEW: Save edited tournament name
+  const saveTournamentName = async () => {
+    if (!editTournamentName.trim()) return alert("Tournament name cannot be empty");
+    await supabase.from("competitions").update({ name: editTournamentName }).eq("id", currentCompId);
+    alert("Tournament name updated!");
+    fetchCompetitions();
+  };
+
+  // NEW: Create new tournament
+  const createNewTournament = async () => {
+    if (!newTournamentName.trim()) return alert("Please enter a tournament name");
+    
+    const { data, error } = await supabase.from("competitions").insert([{
+      name: newTournamentName,
+      format_type: tournamentFormat,
+      competition_type: tournamentType,
+      show_team_name: true,
+      show_player_name: true,
+      status: 'active'
+    }]).select().single();
+
+    if (error) {
+      alert("Error creating tournament: " + error.message);
+      return;
+    }
+
+    // Archive all other competitions
+    await supabase.from("competitions").update({ status: 'archived' }).neq("id", data.id);
+
+    alert("New tournament created successfully!");
+    setCurrentCompId(data.id);
+    setNewTournamentName("");
+    fetchCompetitions();
+    fetchData();
+  };
+
   const wipeCompetition = async () => {
     if (!confirm("WARNING: This will DELETE all matches and standings for the current competition. This cannot be undone.")) return;
-    if (!confirm("Are you absolutely sure? This will clear the database for this tournament.")) return;
+    if (!confirm("Are you absolutely sure?")) return;
 
     await supabase.from("matches").delete().eq("competition_id", currentCompId);
     await supabase.from("group_standings").delete().eq("competition_id", currentCompId);
     
-    alert("Competition data wiped successfully. You can now import a fresh database.");
+    alert("Competition data wiped successfully.");
     fetchData();
   };
 
@@ -173,7 +245,6 @@ export default function AdminPage() {
     }
   };
 
-  // FIXED IMPORT FUNCTION: Archives old tournaments to prevent "multiple active" errors
   const importDatabase = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -187,17 +258,17 @@ export default function AdminPage() {
         return;
       }
 
-      // 1. Archive ALL existing competitions so only ONE is active at a time
+      // Archive ALL existing competitions
       await supabase.from("competitions").update({ status: 'archived' });
 
-      // 2. Create the new competition as the ONLY active one
+      // Create new competition WITHOUT "(Imported)" suffix
       const { data: newComp, error: compError } = await supabase.from("competitions").insert([{
-        name: importData.competition.name + " (Imported)",
+        name: importData.competition.name,
         format_type: importData.competition.format_type,
         competition_type: importData.competition.competition_type,
         show_team_name: importData.competition.show_team_name,
         show_player_name: importData.competition.show_player_name,
-        status: 'active' // Only this one is active now
+        status: 'active'
       }]).select().single();
 
       if (compError) throw compError;
@@ -255,7 +326,7 @@ export default function AdminPage() {
         }]);
       }
 
-      alert("Tournament imported successfully! Old tournament archived.");
+      alert("Tournament imported successfully!");
       setCurrentCompId(newComp.id);
       fetchCompetitions();
       fetchData();
@@ -337,29 +408,37 @@ export default function AdminPage() {
         <button onClick={() => setIsAuthenticated(false)} style={{ background: 'none', border: 'none', color: '#888888', cursor: 'pointer', fontSize: '12px', textTransform: 'uppercase' }}>Logout</button>
       </div>
 
+      {/* TOURNAMENT MANAGEMENT SECTION */}
       <div style={{ background: '#111111', border: '2px solid #C9A959', borderRadius: '4px', padding: '24px' }}>
-        <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '16px' }}> Database Backup & Restore</h2>
-        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '16px' }}>
-          <button onClick={exportDatabase} style={{ background: '#22c55e', color: '#0a0a0a', border: 'none', padding: '12px 24px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
-            📥 Export Database (JSON)
-          </button>
-          <label style={{ background: '#3b82f6', color: 'white', padding: '12px 24px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', display: 'inline-block' }}>
-            📤 Import Database
-            <input type="file" accept=".json" onChange={importDatabase} style={{ display: 'none' }} />
-          </label>
-          <span style={{ color: '#888888', fontSize: '12px', flex: 1 }}>Export saves all data. Import archives old tournaments and creates a new one.</span>
-        </div>
+        <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '16px' }}>Tournament Management</h2>
         
-        <div style={{ borderTop: '1px solid #1a1a1a', paddingTop: '16px' }}>
-          <button onClick={wipeCompetition} style={{ background: '#ef4444', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
-            ⚠️ Wipe Current Competition Data
-          </button>
-          <span style={{ color: '#888888', fontSize: '12px', marginLeft: '16px' }}>Use this to clear all matches/standings before re-importing to avoid duplicates.</span>
+        {/* Switch Competition */}
+        <div style={{ marginBottom: '20px' }}>
+          <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '8px' }}>Switch Competition</label>
+          <select value={currentCompId} onChange={(e) => { setCurrentCompId(e.target.value); const comp = competitions.find(c => c.id === e.target.value); if (comp) { setEditTournamentName(comp.name); setTournamentFormat(comp.format_type || 'round_robin_knockout'); setTournamentType(comp.competition_type || 'tournament'); }}} style={{ width: '100%', padding: '10px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
+            {competitions.map((c: any) => <option key={c.id} value={c.id}>{c.name} {c.status === 'archived' ? '(Archived)' : ''}</option>)}
+          </select>
         </div>
-      </div>
 
-      <div style={{ background: '#111111', border: '1px solid #1a1a1a', borderRadius: '4px', padding: '24px' }}>
-        <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '16px' }}>Tournament Setup</h2>
+        {/* Edit Tournament Name */}
+        <div style={{ marginBottom: '20px' }}>
+          <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '8px' }}>Edit Tournament Name</label>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <input value={editTournamentName} onChange={(e) => setEditTournamentName(e.target.value)} style={{ flex: 1, padding: '10px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }} />
+            <button onClick={saveTournamentName} style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '10px 20px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Save Name</button>
+          </div>
+        </div>
+
+        {/* Create New Tournament */}
+        <div style={{ marginBottom: '20px', paddingTop: '20px', borderTop: '1px solid #1a1a1a' }}>
+          <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '8px' }}>Create New Tournament</label>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <input value={newTournamentName} onChange={(e) => setNewTournamentName(e.target.value)} placeholder="Enter new tournament name" style={{ flex: 1, padding: '10px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }} />
+            <button onClick={createNewTournament} style={{ background: '#22c55e', color: '#0a0a0a', border: 'none', padding: '10px 20px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Create New</button>
+          </div>
+        </div>
+
+        {/* Tournament Format */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
           <div>
             <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '8px' }}>Competition Type</label>
@@ -384,6 +463,34 @@ export default function AdminPage() {
         }} style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '10px 20px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Save Format</button>
       </div>
 
+      {/* EXPORT/IMPORT/WIPE/RESET SECTION */}
+      <div style={{ background: '#111111', border: '2px solid #C9A959', borderRadius: '4px', padding: '24px' }}>
+        <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '16px' }}>Database Backup & Restore</h2>
+        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '16px' }}>
+          <button onClick={exportDatabase} style={{ background: '#22c55e', color: '#0a0a0a', border: 'none', padding: '12px 24px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
+            Export Database (JSON)
+          </button>
+          <label style={{ background: '#3b82f6', color: 'white', padding: '12px 24px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', display: 'inline-block' }}>
+            Import Database
+            <input type="file" accept=".json" onChange={importDatabase} style={{ display: 'none' }} />
+          </label>
+        </div>
+        
+        <div style={{ borderTop: '1px solid #1a1a1a', paddingTop: '16px', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+          <button onClick={resetAllScores} style={{ background: '#f59e0b', color: '#0a0a0a', border: 'none', padding: '12px 24px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
+            Reset All Scores
+          </button>
+          <button onClick={wipeCompetition} style={{ background: '#ef4444', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
+            Wipe Competition Data
+          </button>
+        </div>
+        <div style={{ marginTop: '12px', fontSize: '12px', color: '#888888' }}>
+          <strong>Reset All Scores:</strong> Keeps all matches, resets scores to 0. Use for testing with sample scores.<br/>
+          <strong>Wipe Competition Data:</strong> Deletes all matches and standings. Use before re-importing.
+        </div>
+      </div>
+
+      {/* Live Screen Display Settings */}
       <div style={{ background: '#111111', border: '1px solid #1a1a1a', borderRadius: '4px', padding: '24px' }}>
         <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '16px' }}>Live Screen Display Settings</h2>
         <div style={{ display: 'flex', gap: '24px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -397,6 +504,7 @@ export default function AdminPage() {
         </div>
       </div>
 
+      {/* Knockout Stage Manager */}
       <div style={{ background: '#111111', border: '1px solid #C9A959', borderRadius: '4px', padding: '24px' }}>
         <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '16px' }}>Knockout Stage Manager</h2>
         
@@ -444,6 +552,7 @@ export default function AdminPage() {
         </div>
       </div>
 
+      {/* Group Stage Matches */}
       <div>
         <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#ffffff', marginBottom: '16px' }}>Group Stage Matches ({groupMatches.length})</h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -509,6 +618,7 @@ export default function AdminPage() {
         </div>
       </div>
 
+      {/* Knockout Stage */}
       {knockoutMatches.length > 0 && (
         <div>
           <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#C9A959', marginBottom: '16px' }}>Knockout Stage ({knockoutMatches.length})</h2>
