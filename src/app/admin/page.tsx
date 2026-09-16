@@ -2,6 +2,53 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 
+function TeamSelect({ matchId, teamId, customName, teamNum, teamsList, onUpdate }: any) {
+  const [mode, setMode] = useState(customName ? "custom" : "team");
+  const [text, setText] = useState(customName || "");
+
+  useEffect(() => {
+    setMode(customName ? "custom" : "team");
+    setText(customName || "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchId]);
+
+  return (
+    <div>
+      <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '4px' }}>Team {teamNum}</label>
+      <select
+        value={mode === "custom" ? "custom" : (teamId || "")}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (v === "custom") {
+            setMode("custom");
+            onUpdate(matchId, `team${teamNum}_id`, null);
+          } else {
+            setMode("team");
+            setText("");
+            onUpdate(matchId, `team${teamNum}_id`, v || null);
+            onUpdate(matchId, `team${teamNum}_custom_name`, "");
+          }
+        }}
+        style={{ width: '100%', padding: '8px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', marginBottom: mode === "custom" ? '8px' : '0' }}
+      >
+        <option value="">Select Team</option>
+        {teamsList.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
+        <option value="custom">-- Type Custom Name --</option>
+      </select>
+      {mode === "custom" && (
+        <input
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value);
+            onUpdate(matchId, `team${teamNum}_custom_name`, e.target.value);
+          }}
+          placeholder="Enter custom name..."
+          style={{ width: '100%', padding: '8px', background: '#111111', border: '1px solid #C9A959', color: 'white', borderRadius: '4px', boxSizing: 'border-box' }}
+        />
+      )}
+    </div>
+  );
+}
 export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passcode, setPasscode] = useState("");
@@ -11,25 +58,23 @@ export default function AdminPage() {
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [currentCompId, setCurrentCompId] = useState<string>("");
   const [competitions, setCompetitions] = useState<any[]>([]);
-  
+
   const [showTeamName, setShowTeamName] = useState(true);
   const [showPlayerName, setShowPlayerName] = useState(true);
 
   const [newMatchType, setNewMatchType] = useState<'group' | 'knockout'>('knockout');
-  const [newMatchRound, setNewMatchRound] = useState("Semi-Final");
+  const [newMatchRound, setNewMatchRound] = useState("SF1");
   const [newMatchCategory, setNewMatchCategory] = useState("Doubles");
   const [newMatchCourt, setNewMatchCourt] = useState("Court 1");
   const [newMatchTime, setNewMatchTime] = useState("4:30 PM");
 
   const [tournamentFormat, setTournamentFormat] = useState("round_robin_knockout");
   const [tournamentType, setTournamentType] = useState("tournament");
-
   const [editTournamentName, setEditTournamentName] = useState("");
   const [newTournamentName, setNewTournamentName] = useState("");
 
   const categories = ["Singles", "Doubles", "Men's Singles", "Men's Doubles", "Women's Singles", "Women's Doubles", "Mixed Doubles"];
-  const [selectedKnockoutCategories, setSelectedKnockoutCategories] = useState<string[]>(["Singles", "Doubles"]);
-  const knockoutRounds = ["R128", "R64", "R32", "R16", "Quarter-Final", "Semi-Final", "Final"];
+  const knockoutSlots = ["SF1", "SF2", "Final", "Quarter-Final", "Semi-Final", "R16", "R32", "R64", "R128"];
 
   useEffect(() => {
     if (isAuthenticated) fetchCompetitions();
@@ -73,9 +118,10 @@ export default function AdminPage() {
     else alert("Incorrect passcode.");
   };
 
+  // Broadcast channel on the SAME topic public pages listen to
   useEffect(() => {
     if (!isAuthenticated) return;
-    const ch = supabase.channel("live-refresh-admin");
+    const ch = supabase.channel("live-refresh");
     ch.subscribe();
     (window as any).__liveRefreshChannel = ch;
     return () => {
@@ -84,10 +130,14 @@ export default function AdminPage() {
     };
   }, [isAuthenticated]);
 
-  const pushUpdate = () => {
+  // Instant push to all public pages
+  const notify = () => {
     const ch = (window as any).__liveRefreshChannel;
-    if (!ch) { alert("Channel not ready yet, try again."); return; }
-    ch.send({ type: "broadcast", event: "refresh", payload: { at: Date.now() } });
+    if (ch) ch.send({ type: "broadcast", event: "refresh", payload: { at: Date.now() } });
+  };
+
+  const pushUpdate = () => {
+    notify();
     alert("Update pushed to Live, Standings and Bracket pages.");
   };
 
@@ -100,167 +150,140 @@ export default function AdminPage() {
 
   const updateMatch = async (id: string, field: string, value: any) => {
     await supabase.from("matches").update({ [field]: value }).eq("id", id);
-    fetchData();
+    await fetchData();
+    notify();
   };
 
   const deleteMatch = async (id: string) => {
     if (!confirm("Delete this match?")) return;
     await supabase.from("matches").delete().eq("id", id);
-    fetchData();
+    await fetchData();
+    notify();
   };
 
   const resetMatchScore = async (matchId: string) => {
     if (!confirm("Reset this match score?")) return;
     await supabase.from("matches").update({ team1_score: 0, team2_score: 0, winner_id: null, status: "upcoming" }).eq("id", matchId);
     await recalculateStandings();
-    fetchData();
+    await fetchData();
+    notify();
   };
 
   const updateLiveScore = async (matchId: string, t1: number, t2: number) => {
     await supabase.from("matches").update({ team1_score: t1, team2_score: t2, status: "live" }).eq("id", matchId);
-    fetchData();
+    await fetchData();
+    notify();
   };
 
   const completeMatch = async (matchId: string, t1: number, t2: number, t1Id: string, t2Id: string) => {
+    if (t1 === t2) { alert("Scores cannot be equal. Please enter the correct scores."); return; }
     const winner = t1 > t2 ? t1Id : t2Id;
     await supabase.from("matches").update({ team1_score: t1, team2_score: t2, winner_id: winner, status: "completed" }).eq("id", matchId);
     if (!matches.find(m => m.id === matchId)?.is_knockout) {
       await recalculateStandings();
-      await new Promise(resolve => setTimeout(resolve, 300));
     }
-    fetchData();
+    await fetchData();
+    notify();
   };
 
   const resetAllScores = async () => {
     if (!confirm("WARNING: This will reset ALL match scores to 0 and clear standings. Matches will remain. Continue?")) return;
     if (!confirm("Are you sure? This cannot be undone.")) return;
-
-    await supabase.from("matches").update({ 
-      team1_score: 0, 
-      team2_score: 0, 
-      winner_id: null, 
-      status: "upcoming" 
-    }).eq("competition_id", currentCompId);
-    
-    await supabase.from("group_standings").update({
-      matches_played: 0,
-      wins: 0,
-      losses: 0,
-      points_for: 0,
-      points_against: 0,
-      games_won: 0,
-      games_lost: 0
-    }).eq("competition_id", currentCompId);
-    
+    await supabase.from("matches").update({ team1_score: 0, team2_score: 0, winner_id: null, status: "upcoming" }).eq("competition_id", currentCompId);
+    await supabase.from("group_standings").update({ matches_played: 0, wins: 0, losses: 0, points_for: 0, points_against: 0, games_won: 0, games_lost: 0 }).eq("competition_id", currentCompId);
+    await fetchData();
+    notify();
     alert("All scores reset successfully!");
-    fetchData();
   };
 
   const saveDisplaySettings = async () => {
     await supabase.from("competitions").update({ show_team_name: showTeamName, show_player_name: showPlayerName }).eq("id", currentCompId);
+    notify();
     alert("Live display settings saved!");
   };
 
   const saveTournamentName = async () => {
     if (!editTournamentName.trim()) return alert("Tournament name cannot be empty");
     await supabase.from("competitions").update({ name: editTournamentName }).eq("id", currentCompId);
+    await fetchCompetitions();
+    notify();
     alert("Tournament name updated!");
-    fetchCompetitions();
   };
 
   const createNewTournament = async () => {
     if (!newTournamentName.trim()) return alert("Please enter a tournament name");
-    
     const { data, error } = await supabase.from("competitions").insert([{
-      name: newTournamentName,
-      format_type: tournamentFormat,
-      competition_type: tournamentType,
-      show_team_name: true,
-      show_player_name: true,
-      status: 'active'
+      name: newTournamentName, format_type: tournamentFormat, competition_type: tournamentType,
+      show_team_name: true, show_player_name: true, status: 'active'
     }]).select().single();
-
-    if (error) {
-      alert("Error creating tournament: " + error.message);
-      return;
-    }
-
+    if (error) { alert("Error creating tournament: " + error.message); return; }
     await supabase.from("competitions").update({ status: 'archived' }).neq("id", data.id);
-
-    alert("New tournament created successfully!");
     setCurrentCompId(data.id);
     setNewTournamentName("");
-    fetchCompetitions();
-    fetchData();
+    await fetchCompetitions();
+    await fetchData();
+    notify();
+    alert("New tournament created successfully!");
   };
 
   const wipeCompetition = async () => {
     if (!confirm("WARNING: This will DELETE all matches and standings for the current competition. This cannot be undone.")) return;
     if (!confirm("Are you absolutely sure?")) return;
-
     await supabase.from("matches").delete().eq("competition_id", currentCompId);
     await supabase.from("group_standings").delete().eq("competition_id", currentCompId);
-    
+    await fetchData();
+    notify();
     alert("Competition data wiped successfully.");
-    fetchData();
   };
 
   const addMatch = async () => {
     const isKnockout = newMatchType === 'knockout';
     const maxMatchNum = matches.length > 0 ? Math.max(...matches.map(m => m.match_number)) : 0;
-    
+    const koRound = newMatchRound === 'SF1' || newMatchRound === 'SF2' ? 'Semi-Final' : newMatchRound;
     const { error } = await supabase.from("matches").insert([{
       competition_id: currentCompId, match_number: maxMatchNum + 1, is_knockout: isKnockout,
-      knockout_round: isKnockout ? newMatchRound : null, round: isKnockout ? newMatchRound : 'Round 1',
+      knockout_round: isKnockout ? koRound : null, round: isKnockout ? newMatchRound : 'Round 1',
       category: newMatchCategory, court: newMatchCourt, scheduled_time: newMatchTime,
       game_type: 'TBD', status: 'upcoming', team1_score: 0, team2_score: 0, team1_players: '', team2_players: ''
     }]);
     if (error) alert("Error adding match: " + error.message);
-    else fetchData();
+    else { await fetchData(); notify(); }
   };
 
+  // FIXED: creates exactly 9 knockout matches (SF1 x3 games, SF2 x3 games, Final x3 games)
   const generateKnockoutStage = async () => {
-    if (selectedKnockoutCategories.length === 0) return alert("Please select at least one category.");
-    if (!confirm(`This will create Knockout Matches (2 SF, 1 Final) for: ${selectedKnockoutCategories.join(', ')}. Continue?`)) return;
-    
+    if (!confirm("This will create the Knockout Stage: Semi-Final 1 (3 games), Semi-Final 2 (3 games) and the Final (3 games). Continue?")) return;
     const maxMatchNum = matches.length > 0 ? Math.max(...matches.map(m => m.match_number)) : 0;
-    let currentNum = maxMatchNum + 1;
-    const newMatches = [];
-    
-    for (const cat of selectedKnockoutCategories) {
-      newMatches.push({ competition_id: currentCompId, match_number: currentNum++, is_knockout: true, knockout_round: 'Semi-Final', round: 'SF1', category: cat, court: 'TBD', scheduled_time: 'TBD', game_type: 'Doubles 1', status: 'upcoming', team1_score: 0, team2_score: 0, team1_players: '', team2_players: '' });
-      newMatches.push({ competition_id: currentCompId, match_number: currentNum++, is_knockout: true, knockout_round: 'Semi-Final', round: 'SF2', category: cat, court: 'TBD', scheduled_time: 'TBD', game_type: 'Doubles 1', status: 'upcoming', team1_score: 0, team2_score: 0, team1_players: '', team2_players: '' });
-      newMatches.push({ competition_id: currentCompId, match_number: currentNum++, is_knockout: true, knockout_round: 'Semi-Final', round: 'SF1', category: cat, court: 'TBD', scheduled_time: 'TBD', game_type: 'Doubles 2', status: 'upcoming', team1_score: 0, team2_score: 0, team1_players: '', team2_players: '' });
-      newMatches.push({ competition_id: currentCompId, match_number: currentNum++, is_knockout: true, knockout_round: 'Semi-Final', round: 'SF2', category: cat, court: 'TBD', scheduled_time: 'TBD', game_type: 'Doubles 2', status: 'upcoming', team1_score: 0, team2_score: 0, team1_players: '', team2_players: '' });
-      newMatches.push({ competition_id: currentCompId, match_number: currentNum++, is_knockout: true, knockout_round: 'Semi-Final', round: 'SF1', category: cat, court: 'TBD', scheduled_time: 'TBD', game_type: 'Singles', status: 'upcoming', team1_score: 0, team2_score: 0, team1_players: '', team2_players: '' });
-      newMatches.push({ competition_id: currentCompId, match_number: currentNum++, is_knockout: true, knockout_round: 'Semi-Final', round: 'SF2', category: cat, court: 'TBD', scheduled_time: 'TBD', game_type: 'Singles', status: 'upcoming', team1_score: 0, team2_score: 0, team1_players: '', team2_players: '' });
-      
-      newMatches.push({ competition_id: currentCompId, match_number: currentNum++, is_knockout: true, knockout_round: 'Final', round: 'Final', category: cat, court: 'TBD', scheduled_time: 'TBD', game_type: 'Doubles 1', status: 'upcoming', team1_score: 0, team2_score: 0, team1_players: '', team2_players: '' });
-      newMatches.push({ competition_id: currentCompId, match_number: currentNum++, is_knockout: true, knockout_round: 'Final', round: 'Final', category: cat, court: 'TBD', scheduled_time: 'TBD', game_type: 'Doubles 2', status: 'upcoming', team1_score: 0, team2_score: 0, team1_players: '', team2_players: '' });
-      newMatches.push({ competition_id: currentCompId, match_number: currentNum++, is_knockout: true, knockout_round: 'Final', round: 'Final', category: cat, court: 'TBD', scheduled_time: 'TBD', game_type: 'Singles', status: 'upcoming', team1_score: 0, team2_score: 0, team1_players: '', team2_players: '' });
-    }
-    const { error } = await supabase.from("matches").insert(newMatches);
+    let n = maxMatchNum + 1;
+    const plan = [
+      { round: 'SF1', ko: 'Semi-Final', gt: 'Doubles 1', cat: 'Doubles', court: 'Court 1/A4', time: '4:30 PM' },
+      { round: 'SF2', ko: 'Semi-Final', gt: 'Doubles 1', cat: 'Doubles', court: 'Court 2/A5', time: '4:30 PM' },
+      { round: 'SF1', ko: 'Semi-Final', gt: 'Doubles 2', cat: 'Doubles', court: 'Court 3/A6', time: '4:30 PM' },
+      { round: 'SF2', ko: 'Semi-Final', gt: 'Doubles 2', cat: 'Doubles', court: 'Court 1/A4', time: '4:30 PM' },
+      { round: 'SF1', ko: 'Semi-Final', gt: 'Singles', cat: 'Singles', court: 'Court 2/A5', time: '4:30 PM' },
+      { round: 'SF2', ko: 'Semi-Final', gt: 'Singles', cat: 'Singles', court: 'Court 3/A6', time: '4:30 PM' },
+      { round: 'Final', ko: 'Final', gt: 'Doubles 1', cat: 'Doubles', court: 'Court 1/A4', time: '5:00 PM' },
+      { round: 'Final', ko: 'Final', gt: 'Doubles 2', cat: 'Doubles', court: 'Court 2/A5', time: '5:00 PM' },
+      { round: 'Final', ko: 'Final', gt: 'Singles', cat: 'Singles', court: 'Court 3/A6', time: '5:00 PM' },
+    ];
+    const rows = plan.map(g => ({
+      competition_id: currentCompId, match_number: n++, is_knockout: true, knockout_round: g.ko, round: g.round,
+      category: g.cat, court: g.court, scheduled_time: g.time, game_type: g.gt, status: 'upcoming',
+      team1_score: 0, team2_score: 0, team1_players: g.gt, team2_players: g.gt
+    }));
+    const { error } = await supabase.from("matches").insert(rows);
     if (error) alert("Error generating: " + error.message);
-    else fetchData();
+    else { await fetchData(); notify(); alert("Knockout stage created: SF1, SF2 and Final (3 games each)."); }
   };
 
   const exportDatabase = async () => {
     if (!currentCompId) return alert("No competition selected");
-    
     try {
       const { data: competition } = await supabase.from("competitions").select("*").eq("id", currentCompId).single();
       const { data: matchesData } = await supabase.from("matches").select("*").eq("competition_id", currentCompId);
       const { data: teamsData } = await supabase.from("teams").select("*");
       const { data: standingsData } = await supabase.from("group_standings").select("*").eq("competition_id", currentCompId);
-
-      const exportData = {
-        export_date: new Date().toISOString(),
-        competition,
-        matches: matchesData || [],
-        teams: teamsData || [],
-        standings: standingsData || []
-      };
-
+      const exportData = { export_date: new Date().toISOString(), competition, matches: matchesData || [], teams: teamsData || [], standings: standingsData || [] };
       const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -270,7 +293,6 @@ export default function AdminPage() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      
       alert("Database exported successfully!");
     } catch (error) {
       console.error("Export error:", error);
@@ -281,88 +303,51 @@ export default function AdminPage() {
   const importDatabase = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
     try {
       const text = await file.text();
       const importData = JSON.parse(text);
-
-      if (!confirm(`Import tournament "${importData.competition?.name}"? This will archive your current tournament and create a new one.`)) {
-        event.target.value = '';
-        return;
-      }
-
+      if (!confirm(`Import tournament "${importData.competition?.name}"? This will archive your current tournament and create a new one.`)) { event.target.value = ''; return; }
       await supabase.from("competitions").update({ status: 'archived' });
-
       const { data: newComp, error: compError } = await supabase.from("competitions").insert([{
-        name: importData.competition.name,
-        format_type: importData.competition.format_type,
-        competition_type: importData.competition.competition_type,
-        show_team_name: importData.competition.show_team_name,
-        show_player_name: importData.competition.show_player_name,
-        status: 'active'
+        name: importData.competition.name, format_type: importData.competition.format_type,
+        competition_type: importData.competition.competition_type, show_team_name: importData.competition.show_team_name,
+        show_player_name: importData.competition.show_player_name, status: 'active'
       }]).select().single();
-
       if (compError) throw compError;
-
       const existingTeams: any[] = [];
       for (const team of importData.teams) {
         const { data: existingTeam } = await supabase.from("teams").select("*").eq("name", team.name).single();
-        if (existingTeam) {
-          existingTeams.push({ old_id: team.id, new_id: existingTeam.id });
-        } else {
+        if (existingTeam) existingTeams.push({ old_id: team.id, new_id: existingTeam.id });
+        else {
           const { data: newTeam } = await supabase.from("teams").insert([{ name: team.name }]).select().single();
           existingTeams.push({ old_id: team.id, new_id: newTeam.id });
         }
       }
-
       for (const match of importData.matches) {
         const team1New = existingTeams.find(t => t.old_id === match.team1_id)?.new_id || match.team1_id;
         const team2New = existingTeams.find(t => t.old_id === match.team2_id)?.new_id || match.team2_id;
-        
         await supabase.from("matches").insert([{
-          competition_id: newComp.id,
-          match_number: match.match_number,
-          is_knockout: match.is_knockout,
-          knockout_round: match.knockout_round,
-          round: match.round,
-          category: match.category,
-          court: match.court,
-          scheduled_time: match.scheduled_time,
-          game_type: match.game_type,
-          status: match.status,
-          team1_id: team1New,
-          team2_id: team2New,
-          team1_score: match.team1_score,
-          team2_score: match.team2_score,
-          winner_id: match.winner_id,
-          team1_players: match.team1_players,
-          team2_players: match.team2_players,
-          team1_custom_name: match.team1_custom_name,
-          team2_custom_name: match.team2_custom_name
+          competition_id: newComp.id, match_number: match.match_number, is_knockout: match.is_knockout,
+          knockout_round: match.knockout_round, round: match.round, category: match.category, court: match.court,
+          scheduled_time: match.scheduled_time, game_type: match.game_type, status: match.status,
+          team1_id: team1New, team2_id: team2New, team1_score: match.team1_score, team2_score: match.team2_score,
+          winner_id: match.winner_id, team1_players: match.team1_players, team2_players: match.team2_players,
+          team1_custom_name: match.team1_custom_name, team2_custom_name: match.team2_custom_name
         }]);
       }
-
       for (const standing of importData.standings) {
         const teamNew = existingTeams.find(t => t.old_id === standing.team_id)?.new_id || standing.team_id;
         await supabase.from("group_standings").insert([{
-          competition_id: newComp.id,
-          team_id: teamNew,
-          group: standing.group,
-          matches_played: standing.matches_played,
-          wins: standing.wins,
-          losses: standing.losses,
-          points_for: standing.points_for,
-          points_against: standing.points_against,
-          games_won: standing.games_won || 0,
-          games_lost: standing.games_lost || 0,
-          rank: standing.rank
+          competition_id: newComp.id, team_id: teamNew, group: standing.group, matches_played: standing.matches_played,
+          wins: standing.wins, losses: standing.losses, points_for: standing.points_for, points_against: standing.points_against,
+          games_won: standing.games_won || 0, games_lost: standing.games_lost || 0, rank: standing.rank
         }]);
       }
-
-      alert("Tournament imported successfully!");
       setCurrentCompId(newComp.id);
-      fetchCompetitions();
-      fetchData();
+      await fetchCompetitions();
+      await fetchData();
+      notify();
+      alert("Tournament imported successfully!");
       event.target.value = '';
     } catch (error) {
       console.error("Import error:", error);
@@ -374,54 +359,11 @@ export default function AdminPage() {
   const groupMatches = matches.filter(m => !m.is_knockout);
   const knockoutMatches = matches.filter(m => m.is_knockout);
 
-  const TeamSelect = ({ matchId, teamId, customName, teamNum, teamsList }: any) => {
-    const [localCustomMode, setLocalCustomMode] = useState(!!customName);
-    const [localCustomValue, setLocalCustomValue] = useState(customName || '');
-
-    useEffect(() => {
-      setLocalCustomMode(!!customName);
-      setLocalCustomValue(customName || '');
-    }, [customName]);
-
-    const handleCustomNameChange = async (value: string) => {
-      setLocalCustomValue(value);
-      await updateMatch(matchId, `team${teamNum}_custom_name`, value);
-    };
-
-    const handleDropdownChange = async (value: string) => {
-      if (value === 'custom') {
-        setLocalCustomMode(true);
-        await updateMatch(matchId, `team${teamNum}_id`, null);
-      } else {
-        setLocalCustomMode(false);
-        setLocalCustomValue('');
-        await updateMatch(matchId, `team${teamNum}_id`, value || null);
-        await updateMatch(matchId, `team${teamNum}_custom_name`, '');
-      }
-    };
-
-    return (
-      <div>
-        <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '4px' }}>Team {teamNum}</label>
-        <select 
-          value={localCustomMode ? 'custom' : (teamId || '')} 
-          onChange={(e) => handleDropdownChange(e.target.value)}
-          style={{ width: '100%', padding: '8px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', marginBottom: localCustomMode ? '8px' : '0' }}
-        >
-          <option value="">Select Team</option>
-          {teamsList.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          <option value="custom">-- Type Custom Name --</option>
-        </select>
-        {localCustomMode && (
-          <input 
-            value={localCustomValue} 
-            onChange={(e) => handleCustomNameChange(e.target.value)}
-            placeholder="Enter custom name..." 
-            style={{ width: '100%', padding: '8px', background: '#111111', border: '1px solid #C9A959', color: 'white', borderRadius: '4px', boxSizing: 'border-box' }} 
-          />
-        )}
-      </div>
-    );
+  const readScores = (matchId: string) => {
+    const s1 = parseInt((document.getElementById(`t1-${matchId}`) as HTMLInputElement)?.value);
+    const s2 = parseInt((document.getElementById(`t2-${matchId}`) as HTMLInputElement)?.value);
+    if (isNaN(s1) || isNaN(s2)) { alert("Please enter both scores (enter 0 if none)."); return null; }
+    return { s1, s2 };
   };
 
   if (!isAuthenticated) {
@@ -446,14 +388,12 @@ export default function AdminPage() {
 
       <div style={{ background: '#111111', border: '2px solid #C9A959', borderRadius: '4px', padding: '24px' }}>
         <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '16px' }}>Tournament Management</h2>
-        
         <div style={{ marginBottom: '20px' }}>
           <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '8px' }}>Switch Competition</label>
-          <select value={currentCompId} onChange={(e) => { setCurrentCompId(e.target.value); const comp = competitions.find(c => c.id === e.target.value); if (comp) { setEditTournamentName(comp.name); setTournamentFormat(comp.format_type || 'round_robin_knockout'); setTournamentType(comp.competition_type || 'tournament'); }}} style={{ width: '100%', padding: '10px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
+          <select value={currentCompId} onChange={(e) => { setCurrentCompId(e.target.value); const comp = competitions.find(c => c.id === e.target.value); if (comp) { setEditTournamentName(comp.name); setTournamentFormat(comp.format_type || 'round_robin_knockout'); setTournamentType(comp.competition_type || 'tournament'); } }} style={{ width: '100%', padding: '10px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
             {competitions.map((c: any) => <option key={c.id} value={c.id}>{c.name} {c.status === 'archived' ? '(Archived)' : ''}</option>)}
           </select>
         </div>
-
         <div style={{ marginBottom: '20px' }}>
           <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '8px' }}>Edit Tournament Name</label>
           <div style={{ display: 'flex', gap: '8px' }}>
@@ -461,7 +401,6 @@ export default function AdminPage() {
             <button onClick={saveTournamentName} style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '10px 20px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Save Name</button>
           </div>
         </div>
-
         <div style={{ marginBottom: '20px', paddingTop: '20px', borderTop: '1px solid #1a1a1a' }}>
           <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '8px' }}>Create New Tournament</label>
           <div style={{ display: 'flex', gap: '8px' }}>
@@ -469,7 +408,6 @@ export default function AdminPage() {
             <button onClick={createNewTournament} style={{ background: '#22c55e', color: '#0a0a0a', border: 'none', padding: '10px 20px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Create New</button>
           </div>
         </div>
-
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
           <div>
             <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '8px' }}>Competition Type</label>
@@ -488,31 +426,21 @@ export default function AdminPage() {
             </select>
           </div>
         </div>
-        <button onClick={async () => {
-          await supabase.from("competitions").update({ format_type: tournamentFormat, competition_type: tournamentType }).eq("id", currentCompId);
-          alert("Tournament format saved!");
-        }} style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '10px 20px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Save Format</button>
+        <button onClick={async () => { await supabase.from("competitions").update({ format_type: tournamentFormat, competition_type: tournamentType }).eq("id", currentCompId); notify(); alert("Tournament format saved!"); }} style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '10px 20px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Save Format</button>
       </div>
 
       <div style={{ background: '#111111', border: '2px solid #C9A959', borderRadius: '4px', padding: '24px' }}>
         <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '16px' }}>Database Backup & Restore</h2>
         <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '16px' }}>
-          <button onClick={exportDatabase} style={{ background: '#22c55e', color: '#0a0a0a', border: 'none', padding: '12px 24px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
-            Export Database (JSON)
-          </button>
+          <button onClick={exportDatabase} style={{ background: '#22c55e', color: '#0a0a0a', border: 'none', padding: '12px 24px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Export Database (JSON)</button>
           <label style={{ background: '#3b82f6', color: 'white', padding: '12px 24px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', display: 'inline-block' }}>
             Import Database
             <input type="file" accept=".json" onChange={importDatabase} style={{ display: 'none' }} />
           </label>
         </div>
-        
         <div style={{ borderTop: '1px solid #1a1a1a', paddingTop: '16px', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-          <button onClick={resetAllScores} style={{ background: '#f59e0b', color: '#0a0a0a', border: 'none', padding: '12px 24px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
-            Reset All Scores
-          </button>
-          <button onClick={wipeCompetition} style={{ background: '#ef4444', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
-            Wipe Competition Data
-          </button>
+          <button onClick={resetAllScores} style={{ background: '#f59e0b', color: '#0a0a0a', border: 'none', padding: '12px 24px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Reset All Scores</button>
+          <button onClick={wipeCompetition} style={{ background: '#ef4444', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Wipe Competition Data</button>
         </div>
       </div>
 
@@ -531,29 +459,9 @@ export default function AdminPage() {
 
       <div style={{ background: '#111111', border: '1px solid #C9A959', borderRadius: '4px', padding: '24px' }}>
         <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '16px' }}>Knockout Stage Manager</h2>
-        
-        <div style={{ marginBottom: '20px', display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ color: '#888888', fontSize: '12px', textTransform: 'uppercase' }}>Categories to Generate:</span>
-          {categories.map(cat => (
-            <label key={cat} style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#ffffff', cursor: 'pointer', fontSize: '12px' }}>
-              <input
-                type="checkbox"
-                checked={selectedKnockoutCategories.includes(cat)}
-                onChange={(e) => {
-                  if (e.target.checked) setSelectedKnockoutCategories([...selectedKnockoutCategories, cat]);
-                  else setSelectedKnockoutCategories(selectedKnockoutCategories.filter(c => c !== cat));
-                }}
-                style={{ width: '14px', height: '14px' }}
-              />
-              {cat}
-            </label>
-          ))}
-        </div>
-
         <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
-          <button onClick={generateKnockoutStage} style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '12px 24px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Auto-Generate Knockout</button>
+          <button onClick={generateKnockoutStage} style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '12px 24px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Auto-Generate SF1, SF2 & Final (9 matches)</button>
         </div>
-        
         <div style={{ background: '#0a0a0a', padding: '16px', borderRadius: '4px', border: '1px solid #1a1a1a' }}>
           <h3 style={{ fontSize: '14px', color: '#ffffff', marginTop: 0, marginBottom: '12px' }}>Add Custom Match</h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
@@ -563,7 +471,7 @@ export default function AdminPage() {
             </select>
             {newMatchType === 'knockout' && (
               <select value={newMatchRound} onChange={(e) => setNewMatchRound(e.target.value)} style={{ padding: '10px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
-                {knockoutRounds.map(r => <option key={r} value={r}>{r}</option>)}
+                {knockoutSlots.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
             )}
             <select value={newMatchCategory} onChange={(e) => setNewMatchCategory(e.target.value)} style={{ padding: '10px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
@@ -582,7 +490,7 @@ export default function AdminPage() {
           {groupMatches.map((match: any) => (
             <div key={match.id} style={{ background: '#111111', border: '1px solid #1a1a1a', borderRadius: '4px', padding: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                <span style={{ color: '#C9A959', fontWeight: 'bold' }}>Match #{match.match_number} ({match.category})</span>
+                <span style={{ color: '#C9A959', fontWeight: 'bold' }}>Game #{match.match_number} ({match.category})</span>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button onClick={() => setEditingId(editingId === match.id ? null : match.id)} style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', fontSize: '10px', cursor: 'pointer' }}>{editingId === match.id ? 'CLOSE EDIT' : 'EDIT'}</button>
                   {match.status === 'completed' && <button onClick={() => resetMatchScore(match.id)} style={{ background: '#ef4444', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', fontSize: '10px', cursor: 'pointer' }}>RESET</button>}
@@ -606,7 +514,7 @@ export default function AdminPage() {
                       {categories.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
-                  <TeamSelect matchId={match.id} teamId={match.team1_id} customName={match.team1_custom_name} teamNum={1} teamsList={teams} />
+                  <TeamSelect matchId={match.id} teamId={match.team1_id} customName={match.team1_custom_name} teamNum={1} teamsList={teams} onUpdate={updateMatch} />
                   <TeamSelect matchId={match.id} teamId={match.team2_id} customName={match.team2_custom_name} teamNum={2} teamsList={teams} />
                   <div>
                     <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '4px' }}>Player/s Name (Team 1)</label>
@@ -623,36 +531,18 @@ export default function AdminPage() {
                 <div style={{ display: 'flex', gap: '16px', alignItems: 'center', justifyContent: 'center', marginTop: '16px', flexWrap: 'wrap' }}>
                   <div style={{ flex: 1, textAlign: 'center', minWidth: '120px' }}>
                     <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>{match.team1_custom_name?.trim() || match.team1?.name || 'TBD'}</div>
-                    <div style={{ fontSize: '12px', color: '#888888', marginTop: '4px' }}>Player/s: {match.team1_players || '-'}</div>
+                    <div style={{ fontSize: '12px', color: '#888888', marginTop: '4px' }}>Player/s: {match.team1_players?.trim() || '-'}</div>
                     <input type="number" id={`t1-${match.id}`} defaultValue={match.team1_score || 0} style={{ width: '60px', padding: '8px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', textAlign: 'center', marginTop: '8px' }} />
                   </div>
                   <span style={{ color: '#888888', fontWeight: 'bold' }}>VS</span>
                   <div style={{ flex: 1, textAlign: 'center', minWidth: '120px' }}>
                     <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>{match.team2_custom_name?.trim() || match.team2?.name || 'TBD'}</div>
-                    <div style={{ fontSize: '12px', color: '#888888', marginTop: '4px' }}>Player/s: {match.team2_players || '-'}</div>
+                    <div style={{ fontSize: '12px', color: '#888888', marginTop: '4px' }}>Player/s: {match.team2_players?.trim() || '-'}</div>
                     <input type="number" id={`t2-${match.id}`} defaultValue={match.team2_score || 0} style={{ width: '60px', padding: '8px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', textAlign: 'center', marginTop: '8px' }} />
                   </div>
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    <button 
-                      onClick={() => { 
-                        const s1 = parseInt((document.getElementById(`t1-${match.id}`) as HTMLInputElement).value); 
-                        const s2 = parseInt((document.getElementById(`t2-${match.id}`) as HTMLInputElement).value); 
-                        if(!isNaN(s1) && !isNaN(s2)) updateLiveScore(match.id, s1, s2); 
-                      }} 
-                      style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}
-                    >
-                      Live Score
-                    </button>
-                    <button 
-                      onClick={() => { 
-                        const s1 = parseInt((document.getElementById(`t1-${match.id}`) as HTMLInputElement).value); 
-                        const s2 = parseInt((document.getElementById(`t2-${match.id}`) as HTMLInputElement).value); 
-                        if(!isNaN(s1) && !isNaN(s2)) completeMatch(match.id, s1, s2, match.team1_id, match.team2_id); 
-                      }} 
-                      style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}
-                    >
-                      Complete
-                    </button>
+                    <button onClick={() => { const r = readScores(match.id); if (r) updateLiveScore(match.id, r.s1, r.s2); }} style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Live Score</button>
+                    <button onClick={() => { const r = readScores(match.id); if (r) completeMatch(match.id, r.s1, r.s2, match.team1_id, match.team2_id); }} style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Complete</button>
                   </div>
                 </div>
               )}
@@ -669,7 +559,7 @@ export default function AdminPage() {
             {knockoutMatches.map((match: any) => (
               <div key={match.id} style={{ background: '#111111', border: '1px solid #C9A959', borderRadius: '4px', padding: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                  <span style={{ color: '#ffffff', fontWeight: 'bold' }}>{match.knockout_round || match.round} - Match #{match.match_number} ({match.category})</span>
+                  <span style={{ color: '#ffffff', fontWeight: 'bold' }}>{match.round || match.knockout_round} - Game #{match.match_number} ({match.game_type})</span>
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button onClick={() => setEditingId(editingId === match.id ? null : match.id)} style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', fontSize: '10px', cursor: 'pointer' }}>{editingId === match.id ? 'CLOSE' : 'EDIT'}</button>
                     {match.status === 'completed' && <button onClick={() => resetMatchScore(match.id)} style={{ background: '#ef4444', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', fontSize: '10px', cursor: 'pointer' }}>RESET</button>}
@@ -679,31 +569,29 @@ export default function AdminPage() {
 
                 {editingId === match.id && (
                   <div style={{ background: '#0a0a0a', padding: '16px', borderRadius: '4px', marginBottom: '12px', border: '1px solid #1a1a1a', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    <TeamSelect matchId={match.id} teamId={match.team1_id} customName={match.team1_custom_name} teamNum={1} teamsList={teams} />
+                    <TeamSelect matchId={match.id} teamId={match.team1_id} customName={match.team1_custom_name} teamNum={1} teamsList={teams} onUpdate={updateMatch} />
                     <TeamSelect matchId={match.id} teamId={match.team2_id} customName={match.team2_custom_name} teamNum={2} teamsList={teams} />
-                    <div style={{ gridColumn: '1 / -1' }}>
-                      <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '4px' }}>Category</label>
-                      <select value={match.category} onChange={(e) => updateMatch(match.id, 'category', e.target.value)} style={{ width: '100%', padding: '8px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
-                        {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '4px' }}>Slot / Round</label>
+                      <select value={match.round || match.knockout_round} onChange={(e) => { const v = e.target.value; const ko = v === 'SF1' || v === 'SF2' ? 'Semi-Final' : v; supabase.from("matches").update({ round: v, knockout_round: ko }).eq("id", match.id).then(() => { fetchData(); notify(); }); }} style={{ width: '100%', padding: '8px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
+                        {knockoutSlots.map(r => <option key={r} value={r}>{r}</option>)}
                       </select>
                     </div>
                     <div>
-                      <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '4px' }}>Player/s (Team 1)</label>
-                      <input defaultValue={match.team1_players || ''} onBlur={(e) => updateMatch(match.id, 'team1_players', e.target.value)} style={{ width: '100%', padding: '8px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', boxSizing: 'border-box' }} />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '4px' }}>Player/s (Team 2)</label>
-                      <input defaultValue={match.team2_players || ''} onBlur={(e) => updateMatch(match.id, 'team2_players', e.target.value)} style={{ width: '100%', padding: '8px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', boxSizing: 'border-box' }} />
+                      <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '4px' }}>Game Type</label>
+                      <select value={match.game_type} onChange={(e) => updateMatch(match.id, 'game_type', e.target.value)} style={{ width: '100%', padding: '8px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
+                        <option value="Doubles 1">Doubles 1</option>
+                        <option value="Doubles 2">Doubles 2</option>
+                        <option value="Singles">Singles</option>
+                      </select>
                     </div>
                     <div>
                       <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '4px' }}>Court</label>
                       <input defaultValue={match.court} onBlur={(e) => updateMatch(match.id, 'court', e.target.value)} style={{ width: '100%', padding: '8px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', boxSizing: 'border-box' }} />
                     </div>
                     <div>
-                      <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '4px' }}>Round</label>
-                      <select value={match.knockout_round || 'Semi-Final'} onChange={(e) => updateMatch(match.id, 'knockout_round', e.target.value)} style={{ width: '100%', padding: '8px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
-                        {knockoutRounds.map(r => <option key={r} value={r}>{r}</option>)}
-                      </select>
+                      <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '4px' }}>Time</label>
+                      <input defaultValue={match.scheduled_time} onBlur={(e) => updateMatch(match.id, 'scheduled_time', e.target.value)} style={{ width: '100%', padding: '8px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', boxSizing: 'border-box' }} />
                     </div>
                   </div>
                 )}
@@ -712,36 +600,18 @@ export default function AdminPage() {
                   <div style={{ display: 'flex', gap: '16px', alignItems: 'center', justifyContent: 'center', marginTop: '16px', flexWrap: 'wrap' }}>
                     <div style={{ flex: 1, textAlign: 'center', minWidth: '120px' }}>
                       <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>{match.team1_custom_name?.trim() || match.team1?.name || 'TBD'}</div>
-                      <div style={{ fontSize: '12px', color: '#888888', marginTop: '4px' }}>Player/s: {match.team1_players || '-'}</div>
+                      <div style={{ fontSize: '12px', color: '#888888', marginTop: '4px' }}>Player/s: {match.team1_players?.trim() || '-'}</div>
                       <input type="number" id={`t1-${match.id}`} defaultValue={match.team1_score || 0} style={{ width: '60px', padding: '8px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', textAlign: 'center', marginTop: '8px' }} />
                     </div>
                     <span style={{ color: '#888888', fontWeight: 'bold' }}>VS</span>
                     <div style={{ flex: 1, textAlign: 'center', minWidth: '120px' }}>
                       <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>{match.team2_custom_name?.trim() || match.team2?.name || 'TBD'}</div>
-                      <div style={{ fontSize: '12px', color: '#888888', marginTop: '4px' }}>Player/s: {match.team2_players || '-'}</div>
+                      <div style={{ fontSize: '12px', color: '#888888', marginTop: '4px' }}>Player/s: {match.team2_players?.trim() || '-'}</div>
                       <input type="number" id={`t2-${match.id}`} defaultValue={match.team2_score || 0} style={{ width: '60px', padding: '8px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', textAlign: 'center', marginTop: '8px' }} />
                     </div>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                      <button 
-                        onClick={() => { 
-                          const s1 = parseInt((document.getElementById(`t1-${match.id}`) as HTMLInputElement).value); 
-                          const s2 = parseInt((document.getElementById(`t2-${match.id}`) as HTMLInputElement).value); 
-                          if(!isNaN(s1) && !isNaN(s2)) updateLiveScore(match.id, s1, s2); 
-                        }} 
-                        style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}
-                      >
-                        Live Score
-                      </button>
-                      <button 
-                        onClick={() => { 
-                          const s1 = parseInt((document.getElementById(`t1-${match.id}`) as HTMLInputElement).value); 
-                          const s2 = parseInt((document.getElementById(`t2-${match.id}`) as HTMLInputElement).value); 
-                          if(!isNaN(s1) && !isNaN(s2)) completeMatch(match.id, s1, s2, match.team1_id, match.team2_id); 
-                        }} 
-                        style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}
-                      >
-                        Complete
-                      </button>
+                      <button onClick={() => { const r = readScores(match.id); if (r) updateLiveScore(match.id, r.s1, r.s2); }} style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Live Score</button>
+                      <button onClick={() => { const r = readScores(match.id); if (r) completeMatch(match.id, r.s1, r.s2, match.team1_id, match.team2_id); }} style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Complete</button>
                     </div>
                   </div>
                 )}

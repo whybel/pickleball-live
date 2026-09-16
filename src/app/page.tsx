@@ -101,7 +101,7 @@ export default function Home() {
       </div>
 
       <div>
-        <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#ffffff', marginBottom: '24px' }}>LIVE & UPCOMING MATCHES</h2>
+        <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#ffffff', marginBottom: '24px' }}>LIVE & UPCOMING GAMES</h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {filteredMatches.map((match: any) => {
             const t1Name = match.team1_custom_name?.trim() || match.team1?.name || 'TBD';
@@ -111,7 +111,7 @@ export default function Home() {
                 <div style={{ marginBottom: '16px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                     <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959' }}>
-                      Match #{match.match_number} {match.is_knockout && `(${match.knockout_round || match.round})`}
+                      Game #{match.match_number} {match.is_knockout && `(${match.knockout_round || match.round})`}
                     </span>
                     <span style={{ fontSize: '11px', color: '#888888', textTransform: 'uppercase', letterSpacing: '1px' }}>Category: {match.category}</span>
                   </div>

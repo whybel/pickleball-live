@@ -46,6 +46,11 @@ export default function BracketPage() {
     return "TBD";
   };
 
+  const nameForId = (games: any[], id: string) => {
+    const g = games.find((x: any) => x.team1_id === id || x.team2_id === id);
+    return g ? teamName(g, id) : "TBD";
+  };
+
   const friendlyLabel = (slot: string, roundName: string) => {
     const sf = slot.match(/^SF(\d+)$/);
     if (sf) return `Semi-Final ${sf[1]}`;
@@ -53,7 +58,7 @@ export default function BracketPage() {
     return slot || roundName;
   };
 
-  // ---- Build ties strictly by SLOT (SF1 / SF2 / Final). Never by category or team pair. ----
+  // Group strictly by SLOT (SF1 / SF2 / Final)
   const byRound: Record<string, any[]> = {};
   koMatches.forEach((m) => {
     const r = m.knockout_round || "Final";
@@ -65,7 +70,6 @@ export default function BracketPage() {
   Object.entries(byRound).forEach(([roundName, list]) => {
     list.sort((a, b) => a.match_number - b.match_number);
     const hasSlotCodes = list.some((m) => m.round && m.round !== roundName);
-
     if (hasSlotCodes) {
       const bySlot: Record<string, any[]> = {};
       list.forEach((m) => {
@@ -76,7 +80,6 @@ export default function BracketPage() {
         slots.push({ key: roundName + "|" + slot, label: friendlyLabel(slot, roundName), roundName, games });
       });
     } else {
-      // Fallback: chunk consecutive games by repeated game_type (D1,D2,S | D1,D2,S ...)
       let cur: any[] = [];
       const seen = new Set<string>();
       const chunks: any[][] = [];
@@ -110,24 +113,23 @@ export default function BracketPage() {
       .sort((a, b) => (GAME_ORDER[a.game_type] || 9) - (GAME_ORDER[b.game_type] || 9) || a.match_number - b.match_number);
 
     const ref = games.find((g) => g.team1_id && g.team2_id) || games[0];
-    const t1Id = ref?.team1_id || null;
-    const t2Id = ref?.team2_id || null;
-    const n1 = teamName(ref, t1Id);
-    const n2 = teamName(ref, t2Id);
+    const n1 = teamName(ref, ref?.team1_id || null);
+    const n2 = teamName(ref, ref?.team2_id || null);
 
     const completed = games.filter((g) => g.status === "completed");
-    let w1 = 0, w2 = 0;
-    completed.forEach((g) => {
-      if (g.winner_id && g.winner_id === t1Id) w1++;
-      else if (g.winner_id && g.winner_id === t2Id) w2++;
-    });
-
     const isComplete = games.length > 0 && completed.length === games.length;
-    let winnerName: string | null = null;
-    if (isComplete) {
-      if (w1 >= 2 || w1 > w2) winnerName = n1;
-      else if (w2 >= 2 || w2 > w1) winnerName = n2;
-    }
+
+    // Count wins per team id (robust)
+    const wins: Record<string, number> = {};
+    completed.forEach((g) => {
+      if (g.winner_id) wins[g.winner_id] = (wins[g.winner_id] || 0) + 1;
+    });
+    let winnerId: string | null = null;
+    let best = 0;
+    Object.entries(wins).forEach(([id, c]) => {
+      if (c > best) { best = c; winnerId = id; }
+    });
+    const winnerName = isComplete && winnerId && best >= 2 ? nameForId(games, winnerId) : null;
 
     const isFinal = tie.roundName === "Final";
 
@@ -141,7 +143,7 @@ export default function BracketPage() {
         {games.map((g) => (
           <div key={g.id} style={{ background: "#0a0a0a", border: "1px solid #1a1a1a", borderRadius: 4, padding: 12, marginBottom: 8 }}>
             <div style={{ fontSize: 10, color: "#888888", marginBottom: 8, display: "flex", justifyContent: "space-between" }}>
-              <span>{g.game_type} • Match #{g.match_number}</span>
+              <span>{g.game_type} • Game #{g.match_number}</span>
               <span>{g.court}</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
@@ -155,7 +157,7 @@ export default function BracketPage() {
           </div>
         ))}
 
-        {isComplete && winnerName && (
+        {winnerName && (
           <div style={{ marginTop: 12, padding: 10, background: "#C9A959", borderRadius: 4, textAlign: "center", color: "#0a0a0a", fontWeight: "bold", fontSize: 14, textTransform: "uppercase" }}>
             {isFinal ? <span>🏆 Champion: {winnerName}</span> : <span>Winner: {winnerName}</span>}
           </div>

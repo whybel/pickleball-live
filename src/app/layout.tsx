@@ -1,50 +1,46 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Link from "next/link";
+import BottomNav from "./BottomNav";
 
 export const metadata: Metadata = {
-  title: "PickleballLive",
-  description: "Professional Tournament Scoring",
+  title: "Pickleball Live",
+  description: "Live scores, group standings and knockout bracket",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body style={{ background: '#0a0a0a', color: '#ffffff', fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif', margin: 0, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-        
-        {/* Header */}
-        <header style={{ background: '#111111', borderBottom: '1px solid #1a1a1a', padding: '20px 24px', position: 'sticky', top: 0, zIndex: 50 }}>
-          <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Link href="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '24px', fontWeight: 'bold', color: '#ffffff', letterSpacing: '-0.5px' }}>PICKLEBALL</span>
-              <span style={{ fontSize: '24px', fontWeight: 'bold', color: '#C9A959', letterSpacing: '-0.5px' }}>LIVE</span>
-            </Link>
-            <Link href="/admin" style={{ textDecoration: 'none', fontSize: '12px', fontWeight: '600', color: '#888888', border: '1px solid #2a2a2a', padding: '8px 16px', borderRadius: '4px' }}>
-              ADMIN
-            </Link>
-          </div>
+      <body style={{ background: "#0a0a0a", color: "#ffffff", margin: 0 }}>
+        <style>{`
+          .app-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; background: #111111; border-bottom: 1px solid #1a1a1a; position: sticky; top: 0; z-index: 50; }
+          .app-header a.brand { font-size: 22px; font-weight: 800; color: #ffffff; text-decoration: none; letter-spacing: 1px; }
+          .app-header a.brand span { color: #C9A959; }
+          .admin-btn { background: none; border: 1px solid #2a2a2a; color: #888888; padding: 6px 14px; border-radius: 4px; font-size: 11px; letter-spacing: 1px; text-decoration: none; text-transform: uppercase; }
+          .admin-btn:hover { color: #C9A959; border-color: #C9A959; }
+          .app-main { padding: 24px; padding-bottom: 120px; max-width: 1600px; margin: 0 auto; }
+          .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-around; align-items: center; background: #111111; border-top: 1px solid #1a1a1a; padding: 10px 8px calc(10px + env(safe-area-inset-bottom)); z-index: 50; }
+          .nav-item { display: flex; flex-direction: column; align-items: center; gap: 5px; text-decoration: none; color: #888888; flex: 1; }
+          .nav-item .nav-icon svg { width: 24px; height: 24px; display: block; }
+          .nav-item .nav-label { font-size: 11px; font-weight: 700; letter-spacing: 1px; }
+          .nav-active { color: #C9A959; }
+          @media (min-width: 768px) {
+            .app-header a.brand { font-size: 28px; }
+            .app-main { padding: 32px; padding-bottom: 140px; }
+            .nav-item .nav-icon svg { width: 32px; height: 32px; }
+            .nav-item .nav-label { font-size: 14px; letter-spacing: 2px; }
+            .bottom-nav { padding: 14px 24px calc(14px + env(safe-area-inset-bottom)); }
+          }
+          /* Scale all page content with window size on desktop */
+          @media (min-width: 1024px) { .app-main { zoom: 1.15; } }
+          @media (min-width: 1440px) { .app-main { zoom: 1.3; } }
+        `}</style>
+        <header className="app-header">
+          <Link href="/" className="brand">PICKLEBALL <span>LIVE</span></Link>
+          <Link href="/admin" className="admin-btn">Admin</Link>
         </header>
-
-        {/* Main Content */}
-        <main style={{ flex: 1, maxWidth: '1200px', margin: '0 auto', width: '100%', padding: '24px', paddingBottom: '100px', boxSizing: 'border-box' }}>
-          {children}
-        </main>
-
-        {/* Bottom Navigation */}
-        <nav style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: '#111111', borderTop: '1px solid #1a1a1a', padding: '16px', display: 'flex', justifyContent: 'space-around', zIndex: 50 }}>
-          <Link href="/" style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#C9A959', fontSize: '10px', fontWeight: '600' }}>
-            <span style={{ fontSize: '20px', marginBottom: '4px' }}>🏓</span> LIVE
-          </Link>
-          <Link href="/standings" style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#888888', fontSize: '10px', fontWeight: '600' }}>
-            <span style={{ fontSize: '20px', marginBottom: '4px' }}>📊</span> STANDINGS
-          </Link>
-          <Link href="/bracket" style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#888888', fontSize: '10px', fontWeight: '600' }}>
-            <span style={{ fontSize: '20px', marginBottom: '4px' }}>🏆</span> BRACKET
-          </Link>
-          <Link href="/admin" style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#888888', fontSize: '10px', fontWeight: '600' }}>
-            <span style={{ fontSize: '20px', marginBottom: '4px' }}>⚙️</span> ADMIN
-          </Link>
-        </nav>
+        <main className="app-main">{children}</main>
+        <BottomNav />
       </body>
     </html>
   );
