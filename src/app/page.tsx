@@ -15,39 +15,44 @@ export default function Home() {
 
   const categories = ["All Categories", "Singles", "Doubles", "Men's Singles", "Men's Doubles", "Women's Singles", "Women's Doubles", "Mixed Doubles"];
 
-  useEffect(() => {
-    // Define fetch function inside useEffect to ensure it always has access to the latest state setters
-    const fetchData = async () => {
-      const { data: m } = await supabase.from("matches").select("*, team1:team1_id(name), team2:team2_id(name)").order("match_number");
-      const { data: t } = await supabase.from("teams").select("*").order("name");
-      const { data: settings } = await supabase.from("competitions").select("*").eq("status", "active").single();
-      
-      setMatches(m || []);
-      setTeams(t || []);
-      if (settings) {
-        setCompetitionName(settings.name);
-        setShowTeamName(settings.show_team_name !== false);
-        setShowPlayerName(settings.show_player_name !== false);
-      }
-      setLoading(false);
-    };
+  const fetchData = async () => {
+    const { data: m } = await supabase.from("matches").select("*, team1:team1_id(name), team2:team2_id(name)").order("match_number");
+    const { data: t } = await supabase.from("teams").select("*").order("name");
+    const { data: settings } = await supabase.from("competitions").select("*").eq("status", "active").single();
+    
+    setMatches(m || []);
+    setTeams(t || []);
+    if (settings) {
+      setCompetitionName(settings.name);
+      setShowTeamName(settings.show_team_name !== false);
+      setShowPlayerName(settings.show_player_name !== false);
+    }
+    setLoading(false);
+  };
 
-    // Initial fetch
+  useEffect(() => {
     fetchData();
 
-    // Subscribe to changes. When ANY change happens in matches, teams, or competitions, run fetchData again.
     const channel = supabase
-      .channel('public:live_sync_v2')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'matches' }, fetchData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'teams' }, fetchData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'competitions' }, fetchData)
+      .channel('public:live_sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'matches' }, () => {
+        console.log('Match changed, refetching...');
+        fetchData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'teams' }, () => {
+        console.log('Team changed, refetching...');
+        fetchData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'competitions' }, () => {
+        console.log('Competition changed, refetching...');
+        fetchData();
+      })
       .subscribe();
 
-    // Cleanup subscription on unmount
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []); // Empty array means this runs once when the page loads
+  }, []);
 
   const filteredMatches = matches.filter((match) => {
     const teamMatch = selectedTeam === "All Teams" || 
@@ -88,7 +93,6 @@ export default function Home() {
         <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#ffffff', marginBottom: '24px' }}>LIVE & UPCOMING MATCHES</h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {filteredMatches.map((match: any) => {
-            // Fix for empty spaces in custom names
             const t1Name = match.team1_custom_name?.trim() || match.team1?.name || 'TBD';
             const t2Name = match.team2_custom_name?.trim() || match.team2?.name || 'TBD';
 
