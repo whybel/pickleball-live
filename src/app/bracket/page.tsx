@@ -6,18 +6,18 @@ export default function BracketPage() {
   const [knockoutMatches, setKnockoutMatches] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const fetchData = async () => {
+    const { data } = await supabase.from("matches").select("*, team1:team1_id(name), team2:team2_id(name)").eq("is_knockout", true).order("match_number");
+    setKnockoutMatches(data || []);
+    setLoading(false);
+  };
+
   useEffect(() => {
-    const fetchData = async () => {
-      const { data } = await supabase.from("matches").select("*, team1:team1_id(name), team2:team2_id(name)").eq("is_knockout", true).order("match_number");
-      setKnockoutMatches(data || []);
-      setLoading(false);
-    };
     fetchData();
 
     const channel = supabase
-      .channel("public:knockout_matches")
+      .channel("public:bracket_changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "matches" }, () => fetchData())
-      .on("postgres_changes", { event: "*", schema: "public", table: "teams" }, () => fetchData())
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
@@ -25,114 +25,177 @@ export default function BracketPage() {
 
   if (loading) return <div style={{ textAlign: 'center', padding: '48px', color: '#C9A959' }}>Loading Bracket...</div>;
 
-  // Group matches by round and category
-  const rounds = ["Semi-Final", "Final"];
-  const categories = ["Doubles", "Singles"];
-  
-  const getMatchupWinner = (matchups: any[]) => {
-    // Count wins for each team across all games in the matchup
-    const team1Wins = matchups.filter(m => m.status === 'completed' && m.winner_id === m.team1_id).length;
-    const team2Wins = matchups.filter(m => m.status === 'completed' && m.winner_id === m.team2_id).length;
-    
-    if (team1Wins >= 2) return matchups[0]?.team1_id;
-    if (team2Wins >= 2) return matchups[0]?.team2_id;
-    return null;
+  const getTeamName = (match: any, teamId: string | null) => {
+    if (!teamId) return 'TBD';
+    if (teamId === match.team1_id) return match.team1_custom_name?.trim() || match.team1?.name || 'TBD';
+    if (teamId === match.team2_id) return match.team2_custom_name?.trim() || match.team2?.name || 'TBD';
+    return 'TBD';
   };
 
-  const getTeamName = (match: any, teamId: string) => {
-    if (teamId === match.team1_id) return match.team1_custom_name || match.team1?.name || 'TBD';
-    if (teamId === match.team2_id) return match.team2_custom_name || match.team2?.name || 'TBD';
-    return 'TBD';
+  // Sort games within a matchup: Doubles 1, Doubles 2, Singles
+  const sortGames = (games: any[]) => {
+    const order: Record<string, number> = { 'Doubles 1': 1, 'Doubles 2': 2, 'Singles': 3 };
+    return [...games].sort((a, b) => (order[a.game_type] || 99) - (order[b.game_type] || 99));
+  };
+
+  const renderMatchupBox = (label: string, games: any[]) => {
+    const sorted = sortGames(games);
+    const t1Id = sorted[0]?.team1_id;
+    const t2Id = sorted[0]?.team2_id;
+
+    const t1Wins = sorted.filter(m => m.status === 'completed' && m.winner_id === t1Id).length;
+    const t2Wins = sorted.filter(m => m.status === 'completed' && m.winner_id === t2Id).length;
+
+    let winnerName = null;
+    if (t1Wins >= 2) winnerName = getTeamName(sorted[0], t1Id);
+    else if (t2Wins >= 2) winnerName = getTeamName(sorted[0], t2Id);
+
+    return (
+      <div key={label} style={{ border: '2px solid #C9A959', borderRadius: '8px', padding: '16px', background: 'rgba(201, 169, 89, 0.05)', marginBottom: '24px' }}>
+        <h3 style={{ color: '#C9A959', fontSize: '14px', fontWeight: 'bold', marginTop: 0, marginBottom: '16px', textAlign: 'center', textTransform: 'uppercase' }}>
+          {label}
+        </h3>
+
+        {sorted.map((match: any) => (
+          <div key={match.id} style={{
+            background: '#0a0a0a',
+            border: '1px solid #1a1a1a',
+            borderRadius: '4px',
+            padding: '12px',
+            marginBottom: '8px'
+          }}>
+            <div style={{ fontSize: '10px', color: '#888888', marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
+              <span>Match #{match.match_number}</span>
+              <span>{match.court} • {match.game_type}</span>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+              <span style={{ fontSize: '14px', fontWeight: '600', color: match.winner_id === match.team1_id ? '#C9A959' : '#ffffff' }}>
+                {getTeamName(match, match.team1_id)}
+              </span>
+              <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>
+                {match.status === 'completed' ? match.team1_score : '-'}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '14px', fontWeight: '600', color: match.winner_id === match.team2_id ? '#C9A959' : '#ffffff' }}>
+                {getTeamName(match, match.team2_id)}
+              </span>
+              <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>
+                {match.status === 'completed' ? match.team2_score : '-'}
+              </span>
+            </div>
+          </div>
+        ))}
+
+        {winnerName && (
+          <div style={{
+            marginTop: '12px',
+            padding: '10px',
+            background: '#C9A959',
+            borderRadius: '4px',
+            textAlign: 'center',
+            color: '#0a0a0a',
+            fontWeight: 'bold',
+            fontSize: '14px',
+            textTransform: 'uppercase'
+          }}>
+            Winner: {winnerName}
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
     <div style={{ padding: '24px', maxWidth: '1600px', margin: '0 auto' }}>
       <h1 style={{ fontSize: '32px', fontWeight: 'bold', color: '#ffffff', marginBottom: '8px', textAlign: 'center' }}>KNOCKOUT BRACKET</h1>
       <p style={{ color: '#888888', textAlign: 'center', marginBottom: '40px' }}>Elimination Stage</p>
-      
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '32px' }}>
-        {rounds.map((round) => (
-          <div key={round} style={{ background: '#111111', border: '1px solid #1a1a1a', borderRadius: '8px', padding: '24px' }}>
-            <h2 style={{ fontSize: '20px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '24px', textAlign: 'center', textTransform: 'uppercase' }}>{round}</h2>
-            
-            {categories.map((category) => {
-              const categoryMatches = knockoutMatches.filter(
-                m => m.knockout_round === round && m.category === category
-              );
-              
-              if (categoryMatches.length === 0) return null;
-              
-              // Group by matchup (SF1 or SF2)
-              const matchupKey = round === 'Semi-Final' ? 
-                (categoryMatches[0]?.match_number <= 57 ? 'SF1' : 'SF2') : 'Final';
-              
-              const matchupWinnerId = getMatchupWinner(categoryMatches);
-              
+
+      <div style={{ display: 'flex', gap: '40px', flexWrap: 'wrap', justifyContent: 'center' }}>
+        {/* SEMI-FINAL COLUMN */}
+        <div style={{ flex: 1, minWidth: '300px', maxWidth: '500px' }}>
+          <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: '#C9A959', textAlign: 'center', marginBottom: '24px', textTransform: 'uppercase', borderBottom: '2px solid #C9A959', paddingBottom: '10px' }}>
+            Semi-Final
+          </h2>
+
+          {/* SF1 Box */}
+          {renderMatchupBox('Semi-Final 1', knockoutMatches.filter(m => m.knockout_round === 'Semi-Final' && m.round === 'SF1'))}
+
+          {/* SF2 Box */}
+          {renderMatchupBox('Semi-Final 2', knockoutMatches.filter(m => m.knockout_round === 'Semi-Final' && m.round === 'SF2'))}
+        </div>
+
+        {/* FINAL COLUMN */}
+        <div style={{ flex: 1, minWidth: '300px', maxWidth: '500px' }}>
+          <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: '#C9A959', textAlign: 'center', marginBottom: '24px', textTransform: 'uppercase', borderBottom: '2px solid #C9A959', paddingBottom: '10px' }}>
+            Final
+          </h2>
+
+          {/* Each Final match gets its own box */}
+          {knockoutMatches
+            .filter(m => m.knockout_round === 'Final')
+            .map((match: any) => {
+              const t1Name = getTeamName(match, match.team1_id);
+              const t2Name = getTeamName(match, match.team2_id);
+              const winnerName = match.winner_id === match.team1_id ? t1Name : match.winner_id === match.team2_id ? t2Name : null;
+
               return (
-                <div key={`${round}-${category}`} style={{ marginBottom: '24px', border: '2px solid #C9A959', borderRadius: '8px', padding: '16px', background: 'rgba(201, 169, 89, 0.05)' }}>
+                <div key={match.id} style={{ border: '2px solid #C9A959', borderRadius: '8px', padding: '16px', background: 'rgba(201, 169, 89, 0.05)', marginBottom: '24px' }}>
                   <h3 style={{ color: '#C9A959', fontSize: '14px', fontWeight: 'bold', marginTop: 0, marginBottom: '16px', textAlign: 'center', textTransform: 'uppercase' }}>
-                    {matchupKey} - {category}
+                    {match.game_type} - Match #{match.match_number}
                   </h3>
-                  
-                  {categoryMatches.map((match: any) => (
-                    <div key={match.id} style={{ 
-                      background: '#0a0a0a', 
-                      border: '1px solid #1a1a1a', 
-                      borderRadius: '4px', 
-                      padding: '12px',
-                      marginBottom: '12px'
-                    }}>
-                      <div style={{ fontSize: '11px', color: '#888888', marginBottom: '8px' }}>
-                        Match #{match.match_number} • {match.court}
-                      </div>
-                      
-                      <div style={{ marginBottom: '8px' }}>
-                        <div style={{ fontSize: '14px', fontWeight: '600', color: match.winner_id === match.team1_id ? '#C9A959' : '#ffffff' }}>
-                          {match.team1_custom_name || match.team1?.name || 'TBD'}
-                        </div>
-                        {match.status === 'completed' && (
-                          <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff', textAlign: 'right' }}>
-                            {match.team1_score}
-                          </div>
-                        )}
-                      </div>
-                      
-                      <div>
-                        <div style={{ fontSize: '14px', fontWeight: '600', color: match.winner_id === match.team2_id ? '#C9A959' : '#ffffff' }}>
-                          {match.team2_custom_name || match.team2?.name || 'TBD'}
-                        </div>
-                        {match.status === 'completed' && (
-                          <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff', textAlign: 'right' }}>
-                            {match.team2_score}
-                          </div>
-                        )}
-                      </div>
+
+                  <div style={{
+                    background: '#0a0a0a',
+                    border: '1px solid #1a1a1a',
+                    borderRadius: '4px',
+                    padding: '12px',
+                    marginBottom: '8px'
+                  }}>
+                    <div style={{ fontSize: '10px', color: '#888888', marginBottom: '8px' }}>
+                      {match.court}
                     </div>
-                  ))}
-                  
-                  {/* Show winner only after at least 2 games are won */}
-                  {matchupWinnerId && (
-                    <div style={{ 
-                      marginTop: '16px', 
-                      padding: '12px', 
-                      background: 'rgba(201, 169, 89, 0.2)', 
-                      borderRadius: '4px', 
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '14px', fontWeight: '600', color: match.winner_id === match.team1_id ? '#C9A959' : '#ffffff' }}>
+                        {t1Name}
+                      </span>
+                      <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>
+                        {match.status === 'completed' ? match.team1_score : '-'}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '14px', fontWeight: '600', color: match.winner_id === match.team2_id ? '#C9A959' : '#ffffff' }}>
+                        {t2Name}
+                      </span>
+                      <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>
+                        {match.status === 'completed' ? match.team2_score : '-'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {winnerName && (
+                    <div style={{
+                      marginTop: '12px',
+                      padding: '10px',
+                      background: '#C9A959',
+                      borderRadius: '4px',
                       textAlign: 'center',
-                      border: '1px solid #C9A959'
+                      color: '#0a0a0a',
+                      fontWeight: 'bold',
+                      fontSize: '14px',
+                      textTransform: 'uppercase'
                     }}>
-                      <div style={{ fontSize: '12px', color: '#C9A959', textTransform: 'uppercase', fontWeight: 'bold', marginBottom: '4px' }}>
-                        Winner
-                      </div>
-                      <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>
-                        {getTeamName(categoryMatches[0], matchupWinnerId)}
-                      </div>
+                      Winner: {winnerName}
                     </div>
                   )}
                 </div>
               );
             })}
-          </div>
-        ))}
+        </div>
       </div>
     </div>
   );
