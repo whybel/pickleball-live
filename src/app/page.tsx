@@ -32,15 +32,29 @@ export default function Home() {
     };
     fetchData();
 
-    const channel = supabase.channel("public:matches").on("postgres_changes", { event: "*", schema: "public", table: "matches" }, (payload) => {
-      setMatches((currentMatches) => {
-        if (payload.eventType === "INSERT") return [...currentMatches, payload.new];
-        else if (payload.eventType === "UPDATE") return currentMatches.map((m) => (m.id === payload.new.id ? { ...m, ...payload.new } : m));
-        return currentMatches;
-      });
-    }).subscribe();
+    // Subscribe to matches, teams, and competitions changes
+    const channel = supabase
+      .channel("public:all_changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "matches" }, (payload) => {
+        setMatches((currentMatches) => {
+          if (payload.eventType === "INSERT") return [...currentMatches, payload.new];
+          else if (payload.eventType === "UPDATE") return currentMatches.map((m) => (m.id === payload.new.id ? { ...m, ...payload.new } : m));
+          else if (payload.eventType === "DELETE") return currentMatches.filter((m) => m.id !== payload.old.id);
+          return currentMatches;
+        });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "teams" }, () => {
+        // Refresh teams when they change
+        fetchData();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "competitions" }, () => {
+        fetchData();
+      })
+      .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const filteredMatches = matches.filter((match) => {
@@ -53,22 +67,6 @@ export default function Home() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
-      {/* Print Styles */}
-      <style>{`
-        @media print {
-          @page { margin: 1cm; size: auto; }
-          body { background-color: #0a0a0a !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .no-print { display: none !important; }
-          .match-box { 
-            break-inside: avoid; 
-            page-break-inside: avoid; 
-            margin-bottom: 16px !important;
-            border: 1px solid #C9A959 !important;
-          }
-          nav { display: none !important; }
-        }
-      `}</style>
-
       <div style={{ borderBottom: '1px solid #1a1a1a', paddingBottom: '24px' }}>
         <h1 style={{ fontSize: '32px', fontWeight: 'bold', color: '#ffffff', margin: '0 0 8px 0' }}>{competitionName}</h1>
         <p style={{ color: '#888888', fontSize: '14px', margin: 0 }}>Live scores and results</p>
@@ -144,7 +142,7 @@ export default function Home() {
 
               {match.status === 'completed' && (
                 <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #1a1a1a', textAlign: 'center' }}>
-                  <span style={{ fontSize: '12px', color: '#22c55e', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: '600' }}>Winner: {match.winner_id === match.team1_id ? match.team1?.name : match.team2?.name}</span>
+                  <span style={{ fontSize: '12px', color: '#22c55e', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: '600' }}>Winner: {match.winner_id === match.team1_id ? (match.team1_custom_name || match.team1?.name) : (match.team2_custom_name || match.team2?.name)}</span>
                 </div>
               )}
               {match.status === 'live' && (
