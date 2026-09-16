@@ -68,9 +68,14 @@ export default function AdminPage() {
     setTeams(t || []);
   };
 
+  const handleLogin = () => {
+    if (passcode === process.env.NEXT_PUBLIC_ADMIN_PASSCODE) setIsAuthenticated(true);
+    else alert("Incorrect passcode.");
+  };
+
   useEffect(() => {
     if (!isAuthenticated) return;
-    const ch = supabase.channel("live-refresh");
+    const ch = supabase.channel("live-refresh-admin");
     ch.subscribe();
     (window as any).__liveRefreshChannel = ch;
     return () => {
@@ -142,10 +147,12 @@ export default function AdminPage() {
       wins: 0,
       losses: 0,
       points_for: 0,
-      points_against: 0
+      points_against: 0,
+      games_won: 0,
+      games_lost: 0
     }).eq("competition_id", currentCompId);
     
-    alert("All scores reset successfully! You can now enter sample scores.");
+    alert("All scores reset successfully!");
     fetchData();
   };
 
@@ -221,9 +228,16 @@ export default function AdminPage() {
     const newMatches = [];
     
     for (const cat of selectedKnockoutCategories) {
-      newMatches.push({ competition_id: currentCompId, match_number: currentNum++, is_knockout: true, knockout_round: 'Semi-Final', round: 'Semi-Final', category: cat, court: 'TBD', scheduled_time: 'TBD', game_type: 'TBD', status: 'upcoming', team1_score: 0, team2_score: 0, team1_players: '', team2_players: '' });
-      newMatches.push({ competition_id: currentCompId, match_number: currentNum++, is_knockout: true, knockout_round: 'Semi-Final', round: 'Semi-Final', category: cat, court: 'TBD', scheduled_time: 'TBD', game_type: 'TBD', status: 'upcoming', team1_score: 0, team2_score: 0, team1_players: '', team2_players: '' });
-      newMatches.push({ competition_id: currentCompId, match_number: currentNum++, is_knockout: true, knockout_round: 'Final', round: 'Final', category: cat, court: 'TBD', scheduled_time: 'TBD', game_type: 'TBD', status: 'upcoming', team1_score: 0, team2_score: 0, team1_players: '', team2_players: '' });
+      newMatches.push({ competition_id: currentCompId, match_number: currentNum++, is_knockout: true, knockout_round: 'Semi-Final', round: 'SF1', category: cat, court: 'TBD', scheduled_time: 'TBD', game_type: 'Doubles 1', status: 'upcoming', team1_score: 0, team2_score: 0, team1_players: '', team2_players: '' });
+      newMatches.push({ competition_id: currentCompId, match_number: currentNum++, is_knockout: true, knockout_round: 'Semi-Final', round: 'SF2', category: cat, court: 'TBD', scheduled_time: 'TBD', game_type: 'Doubles 1', status: 'upcoming', team1_score: 0, team2_score: 0, team1_players: '', team2_players: '' });
+      newMatches.push({ competition_id: currentCompId, match_number: currentNum++, is_knockout: true, knockout_round: 'Semi-Final', round: 'SF1', category: cat, court: 'TBD', scheduled_time: 'TBD', game_type: 'Doubles 2', status: 'upcoming', team1_score: 0, team2_score: 0, team1_players: '', team2_players: '' });
+      newMatches.push({ competition_id: currentCompId, match_number: currentNum++, is_knockout: true, knockout_round: 'Semi-Final', round: 'SF2', category: cat, court: 'TBD', scheduled_time: 'TBD', game_type: 'Doubles 2', status: 'upcoming', team1_score: 0, team2_score: 0, team1_players: '', team2_players: '' });
+      newMatches.push({ competition_id: currentCompId, match_number: currentNum++, is_knockout: true, knockout_round: 'Semi-Final', round: 'SF1', category: cat, court: 'TBD', scheduled_time: 'TBD', game_type: 'Singles', status: 'upcoming', team1_score: 0, team2_score: 0, team1_players: '', team2_players: '' });
+      newMatches.push({ competition_id: currentCompId, match_number: currentNum++, is_knockout: true, knockout_round: 'Semi-Final', round: 'SF2', category: cat, court: 'TBD', scheduled_time: 'TBD', game_type: 'Singles', status: 'upcoming', team1_score: 0, team2_score: 0, team1_players: '', team2_players: '' });
+      
+      newMatches.push({ competition_id: currentCompId, match_number: currentNum++, is_knockout: true, knockout_round: 'Final', round: 'Final', category: cat, court: 'TBD', scheduled_time: 'TBD', game_type: 'Doubles 1', status: 'upcoming', team1_score: 0, team2_score: 0, team1_players: '', team2_players: '' });
+      newMatches.push({ competition_id: currentCompId, match_number: currentNum++, is_knockout: true, knockout_round: 'Final', round: 'Final', category: cat, court: 'TBD', scheduled_time: 'TBD', game_type: 'Doubles 2', status: 'upcoming', team1_score: 0, team2_score: 0, team1_players: '', team2_players: '' });
+      newMatches.push({ competition_id: currentCompId, match_number: currentNum++, is_knockout: true, knockout_round: 'Final', round: 'Final', category: cat, court: 'TBD', scheduled_time: 'TBD', game_type: 'Singles', status: 'upcoming', team1_score: 0, team2_score: 0, team1_players: '', team2_players: '' });
     }
     const { error } = await supabase.from("matches").insert(newMatches);
     if (error) alert("Error generating: " + error.message);
@@ -339,6 +353,8 @@ export default function AdminPage() {
           losses: standing.losses,
           points_for: standing.points_for,
           points_against: standing.points_against,
+          games_won: standing.games_won || 0,
+          games_lost: standing.games_lost || 0,
           rank: standing.rank
         }]);
       }
@@ -394,7 +410,7 @@ export default function AdminPage() {
         >
           <option value="">Select Team</option>
           {teamsList.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          <option value="custom">-- Type Custom Name (e.g. Group A Winner) --</option>
+          <option value="custom">-- Type Custom Name --</option>
         </select>
         {localCustomMode && (
           <input 
@@ -428,7 +444,6 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* TOURNAMENT MANAGEMENT SECTION */}
       <div style={{ background: '#111111', border: '2px solid #C9A959', borderRadius: '4px', padding: '24px' }}>
         <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '16px' }}>Tournament Management</h2>
         
@@ -479,7 +494,6 @@ export default function AdminPage() {
         }} style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '10px 20px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Save Format</button>
       </div>
 
-      {/* EXPORT/IMPORT/WIPE/RESET SECTION */}
       <div style={{ background: '#111111', border: '2px solid #C9A959', borderRadius: '4px', padding: '24px' }}>
         <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '16px' }}>Database Backup & Restore</h2>
         <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '16px' }}>
@@ -500,13 +514,8 @@ export default function AdminPage() {
             Wipe Competition Data
           </button>
         </div>
-        <div style={{ marginTop: '12px', fontSize: '12px', color: '#888888' }}>
-          <strong>Reset All Scores:</strong> Keeps all matches, resets scores to 0. Use for testing with sample scores.<br/>
-          <strong>Wipe Competition Data:</strong> Deletes all matches and standings. Use before re-importing.
-        </div>
       </div>
 
-      {/* Live Screen Display Settings */}
       <div style={{ background: '#111111', border: '1px solid #1a1a1a', borderRadius: '4px', padding: '24px' }}>
         <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '16px' }}>Live Screen Display Settings</h2>
         <div style={{ display: 'flex', gap: '24px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -520,7 +529,6 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* Knockout Stage Manager */}
       <div style={{ background: '#111111', border: '1px solid #C9A959', borderRadius: '4px', padding: '24px' }}>
         <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '16px' }}>Knockout Stage Manager</h2>
         
@@ -543,7 +551,7 @@ export default function AdminPage() {
         </div>
 
         <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
-          <button onClick={generateKnockoutStage} style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '12px 24px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Auto-Generate SF & Finals</button>
+          <button onClick={generateKnockoutStage} style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '12px 24px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Auto-Generate Knockout</button>
         </div>
         
         <div style={{ background: '#0a0a0a', padding: '16px', borderRadius: '4px', border: '1px solid #1a1a1a' }}>
@@ -568,7 +576,6 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* Group Stage Matches */}
       <div>
         <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#ffffff', marginBottom: '16px' }}>Group Stage Matches ({groupMatches.length})</h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -613,47 +620,48 @@ export default function AdminPage() {
               )}
 
               {match.status !== 'completed' && (
-                <div style={{ display: 'flex', gap: '16px', alignItems: 'center', justifyContent: 'center', marginTop: '16px' }}>
-                  <div style={{ flex: 1, textAlign: 'center' }}>
-                    <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>{match.team1_custom_name || match.team1?.name || 'TBD'}</div>
+                <div style={{ display: 'flex', gap: '16px', alignItems: 'center', justifyContent: 'center', marginTop: '16px', flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, textAlign: 'center', minWidth: '120px' }}>
+                    <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>{match.team1_custom_name?.trim() || match.team1?.name || 'TBD'}</div>
                     <div style={{ fontSize: '12px', color: '#888888', marginTop: '4px' }}>Player/s: {match.team1_players || '-'}</div>
                     <input type="number" id={`t1-${match.id}`} defaultValue={match.team1_score || 0} style={{ width: '60px', padding: '8px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', textAlign: 'center', marginTop: '8px' }} />
                   </div>
                   <span style={{ color: '#888888', fontWeight: 'bold' }}>VS</span>
-                  <div style={{ flex: 1, textAlign: 'center' }}>
-                    <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>{match.team2_custom_name || match.team2?.name || 'TBD'}</div>
+                  <div style={{ flex: 1, textAlign: 'center', minWidth: '120px' }}>
+                    <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>{match.team2_custom_name?.trim() || match.team2?.name || 'TBD'}</div>
                     <div style={{ fontSize: '12px', color: '#888888', marginTop: '4px' }}>Player/s: {match.team2_players || '-'}</div>
                     <input type="number" id={`t2-${match.id}`} defaultValue={match.team2_score || 0} style={{ width: '60px', padding: '8px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', textAlign: 'center', marginTop: '8px' }} />
                   </div>
-                  <button 
-                    onClick={() => { 
-                      const s1 = parseInt((document.getElementById(`t1-${match.id}`) as HTMLInputElement).value); 
-                      const s2 = parseInt((document.getElementById(`t2-${match.id}`) as HTMLInputElement).value); 
-                      if(!isNaN(s1) && !isNaN(s2)) updateLiveScore(match.id, s1, s2); 
-                    }} 
-                    style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginRight: '8px' }}
-                  >
-                    Update Live Score
-                  </button>
-                  <button 
-                    onClick={() => { 
-                      const s1 = parseInt((document.getElementById(`t1-${match.id}`) as HTMLInputElement).value); 
-                      const s2 = parseInt((document.getElementById(`t2-${match.id}`) as HTMLInputElement).value); 
-                      if(!isNaN(s1) && !isNaN(s2)) completeMatch(match.id, s1, s2, match.team1_id, match.team2_id); 
-                    }} 
-                    style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}
-                  >
-                    Complete
-                  </button>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button 
+                      onClick={() => { 
+                        const s1 = parseInt((document.getElementById(`t1-${match.id}`) as HTMLInputElement).value); 
+                        const s2 = parseInt((document.getElementById(`t2-${match.id}`) as HTMLInputElement).value); 
+                        if(!isNaN(s1) && !isNaN(s2)) updateLiveScore(match.id, s1, s2); 
+                      }} 
+                      style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}
+                    >
+                      Live Score
+                    </button>
+                    <button 
+                      onClick={() => { 
+                        const s1 = parseInt((document.getElementById(`t1-${match.id}`) as HTMLInputElement).value); 
+                        const s2 = parseInt((document.getElementById(`t2-${match.id}`) as HTMLInputElement).value); 
+                        if(!isNaN(s1) && !isNaN(s2)) completeMatch(match.id, s1, s2, match.team1_id, match.team2_id); 
+                      }} 
+                      style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}
+                    >
+                      Complete
+                    </button>
+                  </div>
                 </div>
               )}
-              {match.status === 'completed' && <div style={{ color: '#22c55e', fontSize: '14px', marginTop: '12px', textAlign: 'center' }}>Completed: {match.team1_score} - {match.team2_score} | Winner: {match.winner_id === match.team1_id ? (match.team1_custom_name || match.team1?.name) : (match.team2_custom_name || match.team2?.name)}</div>}
+              {match.status === 'completed' && <div style={{ color: '#22c55e', fontSize: '14px', marginTop: '12px', textAlign: 'center' }}>Completed: {match.team1_score} - {match.team2_score} | Winner: {match.winner_id === match.team1_id ? (match.team1_custom_name?.trim() || match.team1?.name) : (match.team2_custom_name?.trim() || match.team2?.name)}</div>}
             </div>
           ))}
         </div>
       </div>
 
-      {/* Knockout Stage */}
       {knockoutMatches.length > 0 && (
         <div>
           <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#C9A959', marginBottom: '16px' }}>Knockout Stage ({knockoutMatches.length})</h2>
@@ -701,41 +709,43 @@ export default function AdminPage() {
                 )}
 
                 {match.status !== 'completed' && (
-                  <div style={{ display: 'flex', gap: '16px', alignItems: 'center', justifyContent: 'center', marginTop: '16px' }}>
-                    <div style={{ flex: 1, textAlign: 'center' }}>
-                      <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>{match.team1_custom_name || match.team1?.name || 'TBD'}</div>
+                  <div style={{ display: 'flex', gap: '16px', alignItems: 'center', justifyContent: 'center', marginTop: '16px', flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, textAlign: 'center', minWidth: '120px' }}>
+                      <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>{match.team1_custom_name?.trim() || match.team1?.name || 'TBD'}</div>
                       <div style={{ fontSize: '12px', color: '#888888', marginTop: '4px' }}>Player/s: {match.team1_players || '-'}</div>
                       <input type="number" id={`t1-${match.id}`} defaultValue={match.team1_score || 0} style={{ width: '60px', padding: '8px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', textAlign: 'center', marginTop: '8px' }} />
                     </div>
                     <span style={{ color: '#888888', fontWeight: 'bold' }}>VS</span>
-                    <div style={{ flex: 1, textAlign: 'center' }}>
-                      <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>{match.team2_custom_name || match.team2?.name || 'TBD'}</div>
+                    <div style={{ flex: 1, textAlign: 'center', minWidth: '120px' }}>
+                      <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>{match.team2_custom_name?.trim() || match.team2?.name || 'TBD'}</div>
                       <div style={{ fontSize: '12px', color: '#888888', marginTop: '4px' }}>Player/s: {match.team2_players || '-'}</div>
                       <input type="number" id={`t2-${match.id}`} defaultValue={match.team2_score || 0} style={{ width: '60px', padding: '8px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', textAlign: 'center', marginTop: '8px' }} />
                     </div>
-                    <button 
-                      onClick={() => { 
-                        const s1 = parseInt((document.getElementById(`t1-${match.id}`) as HTMLInputElement).value); 
-                        const s2 = parseInt((document.getElementById(`t2-${match.id}`) as HTMLInputElement).value); 
-                        if(!isNaN(s1) && !isNaN(s2)) updateLiveScore(match.id, s1, s2); 
-                      }} 
-                      style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginRight: '8px' }}
-                    >
-                      Update Live Score
-                    </button>
-                    <button 
-                      onClick={() => { 
-                        const s1 = parseInt((document.getElementById(`t1-${match.id}`) as HTMLInputElement).value); 
-                        const s2 = parseInt((document.getElementById(`t2-${match.id}`) as HTMLInputElement).value); 
-                        if(!isNaN(s1) && !isNaN(s2)) completeMatch(match.id, s1, s2, match.team1_id, match.team2_id); 
-                      }} 
-                      style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}
-                    >
-                      Complete
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button 
+                        onClick={() => { 
+                          const s1 = parseInt((document.getElementById(`t1-${match.id}`) as HTMLInputElement).value); 
+                          const s2 = parseInt((document.getElementById(`t2-${match.id}`) as HTMLInputElement).value); 
+                          if(!isNaN(s1) && !isNaN(s2)) updateLiveScore(match.id, s1, s2); 
+                        }} 
+                        style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}
+                      >
+                        Live Score
+                      </button>
+                      <button 
+                        onClick={() => { 
+                          const s1 = parseInt((document.getElementById(`t1-${match.id}`) as HTMLInputElement).value); 
+                          const s2 = parseInt((document.getElementById(`t2-${match.id}`) as HTMLInputElement).value); 
+                          if(!isNaN(s1) && !isNaN(s2)) completeMatch(match.id, s1, s2, match.team1_id, match.team2_id); 
+                        }} 
+                        style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}
+                      >
+                        Complete
+                      </button>
+                    </div>
                   </div>
                 )}
-                {match.status === 'completed' && <div style={{ color: '#22c55e', fontSize: '14px', marginTop: '12px', textAlign: 'center' }}>Completed: {match.team1_score} - {match.team2_score} | Winner: {match.winner_id === match.team1_id ? (match.team1_custom_name || match.team1?.name) : (match.team2_custom_name || match.team2?.name)}</div>}
+                {match.status === 'completed' && <div style={{ color: '#22c55e', fontSize: '14px', marginTop: '12px', textAlign: 'center' }}>Completed: {match.team1_score} - {match.team2_score} | Winner: {match.winner_id === match.team1_id ? (match.team1_custom_name?.trim() || match.team1?.name) : (match.team2_custom_name?.trim() || match.team2?.name)}</div>}
               </div>
             ))}
           </div>
