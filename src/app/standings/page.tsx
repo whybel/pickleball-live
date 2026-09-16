@@ -9,13 +9,13 @@ export default function StandingsPage() {
   useEffect(() => {
     fetchData();
     
-    // Set up real-time subscription
+    // FIX: Listen to the MATCHES table instead of group_standings.
+    // Whenever a score is updated or a match is completed, this fires instantly.
     const channel = supabase
-      .channel("public:group_standings")
+      .channel("public:matches")
       .on("postgres_changes", 
-        { event: "*", schema: "public", table: "group_standings" }, 
+        { event: "*", schema: "public", table: "matches" }, 
         () => {
-          console.log("Standings changed, refetching...");
           fetchData();
         }
       )
