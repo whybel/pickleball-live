@@ -15,41 +15,31 @@ export default function Home() {
 
   const categories = ["All Categories", "Singles", "Doubles", "Men's Singles", "Men's Doubles", "Women's Singles", "Women's Doubles", "Mixed Doubles"];
 
+  // Centralized fetch function
+  const fetchData = async () => {
+    const { data: m } = await supabase.from("matches").select("*, team1:team1_id(name), team2:team2_id(name)").order("match_number");
+    const { data: t } = await supabase.from("teams").select("*").order("name");
+    const { data: settings } = await supabase.from("competitions").select("*").eq("status", "active").single();
+    
+    setMatches(m || []);
+    setTeams(t || []);
+    if (settings) {
+      setCompetitionName(settings.name);
+      setShowTeamName(settings.show_team_name !== false);
+      setShowPlayerName(settings.show_player_name !== false);
+    }
+    setLoading(false);
+  };
+
   useEffect(() => {
-    const fetchData = async () => {
-      const { data: m } = await supabase.from("matches").select("*, team1:team1_id(name), team2:team2_id(name)").order("match_number");
-      const { data: t } = await supabase.from("teams").select("*").order("name");
-      const { data: settings } = await supabase.from("competitions").select("*").eq("status", "active").single();
-      
-      setMatches(m || []);
-      setTeams(t || []);
-      if (settings) {
-        setCompetitionName(settings.name);
-        setShowTeamName(settings.show_team_name !== false);
-        setShowPlayerName(settings.show_player_name !== false);
-      }
-      setLoading(false);
-    };
     fetchData();
 
-    // Subscribe to matches, teams, and competitions changes
+    // Subscribe to ALL changes. If anything changes (score, team name, match setup), refetch everything.
     const channel = supabase
       .channel("public:all_changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "matches" }, (payload) => {
-        setMatches((currentMatches) => {
-          if (payload.eventType === "INSERT") return [...currentMatches, payload.new];
-          else if (payload.eventType === "UPDATE") return currentMatches.map((m) => (m.id === payload.new.id ? { ...m, ...payload.new } : m));
-          else if (payload.eventType === "DELETE") return currentMatches.filter((m) => m.id !== payload.old.id);
-          return currentMatches;
-        });
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "teams" }, () => {
-        // Refresh teams when they change
-        fetchData();
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "competitions" }, () => {
-        fetchData();
-      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "matches" }, () => fetchData())
+      .on("postgres_changes", { event: "*", schema: "public", table: "teams" }, () => fetchData())
+      .on("postgres_changes", { event: "*", schema: "public", table: "competitions" }, () => fetchData())
       .subscribe();
 
     return () => {
@@ -58,7 +48,7 @@ export default function Home() {
   }, []);
 
   const filteredMatches = matches.filter((match) => {
-    const teamMatch = selectedTeam === "All Teams" || match.team1?.name === selectedTeam || match.team2?.name === selectedTeam;
+    const teamMatch = selectedTeam === "All Teams" || match.team1?.name === selectedTeam || match.team2?.name === selectedTeam || match.team1_custom_name === selectedTeam || match.team2_custom_name === selectedTeam;
     const categoryMatch = selectedCategory === "All Categories" || match.category === selectedCategory;
     return teamMatch && categoryMatch;
   });
