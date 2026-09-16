@@ -2,106 +2,161 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
+const ROUND_ORDER = ["R128", "R64", "R32", "R16", "Quarter-Final", "Semi-Final", "Final"];
+const GAME_ORDER: Record<string, number> = { "Doubles 1": 1, "Doubles 2": 2, "Singles": 3 };
+
 export default function BracketPage() {
-  const [knockoutMatches, setKnockoutMatches] = useState<any[]>([]);
+  const [koMatches, setKoMatches] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchData = async () => {
-    const { data } = await supabase.from("matches").select("*, team1:team1_id(name), team2:team2_id(name)").eq("is_knockout", true).order("match_number");
-    setKnockoutMatches(data || []);
+    const { data } = await supabase
+      .from("matches")
+      .select("*, team1:team1_id(name), team2:team2_id(name)")
+      .eq("is_knockout", true)
+      .order("match_number");
+    setKoMatches(data || []);
     setLoading(false);
   };
 
   useEffect(() => {
     fetchData();
-
-    const channel = supabase
-      .channel("public:bracket_changes")
+    const dataChannel = supabase
+      .channel("bracket-data")
       .on("postgres_changes", { event: "*", schema: "public", table: "matches" }, () => fetchData())
       .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
+    const refreshChannel = supabase
+      .channel("live-refresh")
+      .on("broadcast", { event: "refresh" }, () => fetchData())
+      .subscribe();
+    return () => {
+      supabase.removeChannel(dataChannel);
+      supabase.removeChannel(refreshChannel);
+    };
   }, []);
 
-  if (loading) return <div style={{ textAlign: 'center', padding: '48px', color: '#C9A959' }}>Loading Bracket...</div>;
+  if (loading) return <div style={{ textAlign: "center", padding: "48px", color: "#C9A959" }}>Loading Bracket...</div>;
 
-  const getTeamName = (match: any, teamId: string | null) => {
-    if (!teamId) return 'TBD';
-    if (teamId === match.team1_id) return match.team1_custom_name?.trim() || match.team1?.name || 'TBD';
-    if (teamId === match.team2_id) return match.team2_custom_name?.trim() || match.team2?.name || 'TBD';
-    return 'TBD';
+  const teamName = (m: any, id: string | null) => {
+    if (!id) return "TBD";
+    if (id === m.team1_id) return m.team1_custom_name?.trim() || m.team1?.name || "TBD";
+    if (id === m.team2_id) return m.team2_custom_name?.trim() || m.team2?.name || "TBD";
+    return "TBD";
   };
 
-  // Sort games within a matchup: Doubles 1, Doubles 2, Singles
-  const sortGames = (games: any[]) => {
-    const order: Record<string, number> = { 'Doubles 1': 1, 'Doubles 2': 2, 'Singles': 3 };
-    return [...games].sort((a, b) => (order[a.game_type] || 99) - (order[b.game_type] || 99));
-  };
+  // ---------- BUILD TIES ----------
+  // A TIE = one matchup of up to 3 games (Doubles 1, Doubles 2, Singles)
+  const byRound: Record<string, any[]> = {};
+  koMatches.forEach((m) => {
+    const r = m.knockout_round || "Final";
+    (byRound[r] = byRound[r] || []).push(m);
+  });
 
-  const renderMatchupBox = (label: string, games: any[]) => {
-    const sorted = sortGames(games);
-    const t1Id = sorted[0]?.team1_id;
-    const t2Id = sorted[0]?.team2_id;
+  const tiesByRound: Record<string, any[]> = {};
 
-    const t1Wins = sorted.filter(m => m.status === 'completed' && m.winner_id === t1Id).length;
-    const t2Wins = sorted.filter(m => m.status === 'completed' && m.winner_id === t2Id).length;
+  Object.keys(byRound).forEach((roundName) => {
+    const list = byRound[roundName].slice().sort((a, b) => a.match_number - b.match_number);
 
-    let winnerName = null;
-    if (t1Wins >= 2) winnerName = getTeamName(sorted[0], t1Id);
-    else if (t2Wins >= 2) winnerName = getTeamName(sorted[0], t2Id);
+    // Group games into ties: same slot (SF1/SF2/Final...) + same pair of teams
+    const groups: Record<string, any[]> = {};
+    list.forEach((m) => {
+      const pair = m.team1_id && m.team2_id ? [m.team1_id, m.team2_id].sort().join("~") : "";
+      const slot = m.round || roundName;
+      const key = `${slot}|${pair}`;
+      (groups[key] = groups[key] || []).push(m);
+    });
+
+    // Safety: if a group accidentally contains 2 ties (repeated game types), split it
+    const ties: any[][] = [];
+    Object.values(groups).forEach((g) => {
+      let current: any[] = [];
+      const seen = new Set<string>();
+      g.forEach((m) => {
+        const gt = m.game_type || String(m.match_number);
+        if (seen.has(gt)) {
+          if (current.length) ties.push(current);
+          current = [];
+          seen.clear();
+        }
+        seen.add(gt);
+        current.push(m);
+      });
+      if (current.length) ties.push(current);
+    });
+
+    ties.sort((a, b) => a[0].match_number - b[0].match_number);
+    tiesByRound[roundName] = ties.map((games, i) => ({
+      games,
+      label: ties.length > 1 ? `${roundName} ${i + 1}` : roundName,
+    }));
+  });
+
+  const roundsPresent = ROUND_ORDER.filter((r) => tiesByRound[r]?.length);
+  Object.keys(tiesByRound).forEach((r) => {
+    if (!roundsPresent.includes(r)) roundsPresent.push(r);
+  });
+
+  // ---------- RENDER ONE TIE BOX ----------
+  const renderTie = (tie: any, roundName: string) => {
+    const games = tie.games
+      .slice()
+      .sort((a: any, b: any) => (GAME_ORDER[a.game_type] || 9) - (GAME_ORDER[b.game_type] || 9) || a.match_number - b.match_number);
+
+    const ref = games.find((g: any) => g.team1_id && g.team2_id) || games[0];
+    const t1Id = ref.team1_id || null;
+    const t2Id = ref.team2_id || null;
+    const n1 = teamName(ref, t1Id);
+    const n2 = teamName(ref, t2Id);
+
+    const completed = games.filter((g: any) => g.status === "completed");
+    let w1 = 0, w2 = 0;
+    completed.forEach((g: any) => {
+      if (g.winner_id && g.winner_id === g.team1_id) w1++;
+      else if (g.winner_id && g.winner_id === g.team2_id) w2++;
+    });
+
+    const isComplete = games.length > 0 && completed.length === games.length;
+    let winnerName: string | null = null;
+    if (isComplete) {
+      if (w1 >= 2 || w1 > w2) winnerName = n1;
+      else if (w2 >= 2 || w2 > w1) winnerName = n2;
+    }
+
+    const isFinal = roundName === "Final";
 
     return (
-      <div key={label} style={{ border: '2px solid #C9A959', borderRadius: '8px', padding: '16px', background: 'rgba(201, 169, 89, 0.05)', marginBottom: '24px' }}>
-        <h3 style={{ color: '#C9A959', fontSize: '14px', fontWeight: 'bold', marginTop: 0, marginBottom: '16px', textAlign: 'center', textTransform: 'uppercase' }}>
-          {label}
+      <div key={tie.label + "-" + games[0].id} style={{ border: "2px solid #C9A959", borderRadius: 8, padding: 16, background: "rgba(201,169,89,0.05)", marginBottom: 24 }}>
+        <h3 style={{ color: "#C9A959", fontSize: 14, fontWeight: "bold", margin: "0 0 6px 0", textAlign: "center", textTransform: "uppercase", letterSpacing: 1 }}>
+          {tie.label}
         </h3>
+        <div style={{ color: "#888888", fontSize: 11, textAlign: "center", marginBottom: 12 }}>
+          {n1} vs {n2}
+        </div>
 
-        {sorted.map((match: any) => (
-          <div key={match.id} style={{
-            background: '#0a0a0a',
-            border: '1px solid #1a1a1a',
-            borderRadius: '4px',
-            padding: '12px',
-            marginBottom: '8px'
-          }}>
-            <div style={{ fontSize: '10px', color: '#888888', marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
-              <span>Match #{match.match_number}</span>
-              <span>{match.court} • {match.game_type}</span>
+        {games.map((g: any) => (
+          <div key={g.id} style={{ background: "#0a0a0a", border: "1px solid #1a1a1a", borderRadius: 4, padding: 12, marginBottom: 8 }}>
+            <div style={{ fontSize: 10, color: "#888888", marginBottom: 8, display: "flex", justifyContent: "space-between" }}>
+              <span>{g.game_type} • Match #{g.match_number}</span>
+              <span>{g.court}</span>
             </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-              <span style={{ fontSize: '14px', fontWeight: '600', color: match.winner_id === match.team1_id ? '#C9A959' : '#ffffff' }}>
-                {getTeamName(match, match.team1_id)}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: g.winner_id === g.team1_id ? "#C9A959" : "#ffffff" }}>
+                {teamName(g, g.team1_id)}
               </span>
-              <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>
-                {match.status === 'completed' ? match.team1_score : '-'}
-              </span>
+              <span style={{ fontSize: 16, fontWeight: "bold", color: "#ffffff" }}>{g.status === "completed" ? g.team1_score : "-"}</span>
             </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '14px', fontWeight: '600', color: match.winner_id === match.team2_id ? '#C9A959' : '#ffffff' }}>
-                {getTeamName(match, match.team2_id)}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: g.winner_id === g.team2_id ? "#C9A959" : "#ffffff" }}>
+                {teamName(g, g.team2_id)}
               </span>
-              <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>
-                {match.status === 'completed' ? match.team2_score : '-'}
-              </span>
+              <span style={{ fontSize: 16, fontWeight: "bold", color: "#ffffff" }}>{g.status === "completed" ? g.team2_score : "-"}</span>
             </div>
           </div>
         ))}
 
-        {winnerName && (
-          <div style={{
-            marginTop: '12px',
-            padding: '10px',
-            background: '#C9A959',
-            borderRadius: '4px',
-            textAlign: 'center',
-            color: '#0a0a0a',
-            fontWeight: 'bold',
-            fontSize: '14px',
-            textTransform: 'uppercase'
-          }}>
-            Winner: {winnerName}
+        {isComplete && winnerName && (
+          <div style={{ marginTop: 12, padding: 10, background: "#C9A959", borderRadius: 4, textAlign: "center", color: "#0a0a0a", fontWeight: "bold", fontSize: 14, textTransform: "uppercase" }}>
+            {isFinal ? (<span>🏆 Champion: {winnerName}</span>) : (<span>Winner: {winnerName}</span>)}
           </div>
         )}
       </div>
@@ -109,93 +164,23 @@ export default function BracketPage() {
   };
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1600px', margin: '0 auto' }}>
-      <h1 style={{ fontSize: '32px', fontWeight: 'bold', color: '#ffffff', marginBottom: '8px', textAlign: 'center' }}>KNOCKOUT BRACKET</h1>
-      <p style={{ color: '#888888', textAlign: 'center', marginBottom: '40px' }}>Elimination Stage</p>
+    <div style={{ padding: 24, maxWidth: 1600, margin: "0 auto" }}>
+      <h1 style={{ fontSize: 32, fontWeight: "bold", color: "#ffffff", marginBottom: 8, textAlign: "center" }}>KNOCKOUT BRACKET</h1>
+      <p style={{ color: "#888888", textAlign: "center", marginBottom: 40 }}>Elimination Stage</p>
 
-      <div style={{ display: 'flex', gap: '40px', flexWrap: 'wrap', justifyContent: 'center' }}>
-        {/* SEMI-FINAL COLUMN */}
-        <div style={{ flex: 1, minWidth: '300px', maxWidth: '500px' }}>
-          <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: '#C9A959', textAlign: 'center', marginBottom: '24px', textTransform: 'uppercase', borderBottom: '2px solid #C9A959', paddingBottom: '10px' }}>
-            Semi-Final
-          </h2>
+      {roundsPresent.length === 0 && (
+        <div style={{ textAlign: "center", padding: 48, color: "#888888" }}>Knockout stage has not been set up yet.</div>
+      )}
 
-          {/* SF1 Box */}
-          {renderMatchupBox('Semi-Final 1', knockoutMatches.filter(m => m.knockout_round === 'Semi-Final' && m.round === 'SF1'))}
-
-          {/* SF2 Box */}
-          {renderMatchupBox('Semi-Final 2', knockoutMatches.filter(m => m.knockout_round === 'Semi-Final' && m.round === 'SF2'))}
-        </div>
-
-        {/* FINAL COLUMN */}
-        <div style={{ flex: 1, minWidth: '300px', maxWidth: '500px' }}>
-          <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: '#C9A959', textAlign: 'center', marginBottom: '24px', textTransform: 'uppercase', borderBottom: '2px solid #C9A959', paddingBottom: '10px' }}>
-            Final
-          </h2>
-
-          {/* Each Final match gets its own box */}
-          {knockoutMatches
-            .filter(m => m.knockout_round === 'Final')
-            .map((match: any) => {
-              const t1Name = getTeamName(match, match.team1_id);
-              const t2Name = getTeamName(match, match.team2_id);
-              const winnerName = match.winner_id === match.team1_id ? t1Name : match.winner_id === match.team2_id ? t2Name : null;
-
-              return (
-                <div key={match.id} style={{ border: '2px solid #C9A959', borderRadius: '8px', padding: '16px', background: 'rgba(201, 169, 89, 0.05)', marginBottom: '24px' }}>
-                  <h3 style={{ color: '#C9A959', fontSize: '14px', fontWeight: 'bold', marginTop: 0, marginBottom: '16px', textAlign: 'center', textTransform: 'uppercase' }}>
-                    {match.game_type} - Match #{match.match_number}
-                  </h3>
-
-                  <div style={{
-                    background: '#0a0a0a',
-                    border: '1px solid #1a1a1a',
-                    borderRadius: '4px',
-                    padding: '12px',
-                    marginBottom: '8px'
-                  }}>
-                    <div style={{ fontSize: '10px', color: '#888888', marginBottom: '8px' }}>
-                      {match.court}
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                      <span style={{ fontSize: '14px', fontWeight: '600', color: match.winner_id === match.team1_id ? '#C9A959' : '#ffffff' }}>
-                        {t1Name}
-                      </span>
-                      <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>
-                        {match.status === 'completed' ? match.team1_score : '-'}
-                      </span>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '14px', fontWeight: '600', color: match.winner_id === match.team2_id ? '#C9A959' : '#ffffff' }}>
-                        {t2Name}
-                      </span>
-                      <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>
-                        {match.status === 'completed' ? match.team2_score : '-'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {winnerName && (
-                    <div style={{
-                      marginTop: '12px',
-                      padding: '10px',
-                      background: '#C9A959',
-                      borderRadius: '4px',
-                      textAlign: 'center',
-                      color: '#0a0a0a',
-                      fontWeight: 'bold',
-                      fontSize: '14px',
-                      textTransform: 'uppercase'
-                    }}>
-                      Winner: {winnerName}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-        </div>
+      <div style={{ display: "flex", gap: 32, flexWrap: "wrap", alignItems: "flex-start" }}>
+        {roundsPresent.map((r) => (
+          <div key={r} style={{ flex: "1 1 320px", minWidth: 300, maxWidth: 520 }}>
+            <h2 style={{ fontSize: 22, fontWeight: "bold", color: "#C9A959", textAlign: "center", marginBottom: 24, textTransform: "uppercase", borderBottom: "2px solid #C9A959", paddingBottom: 10 }}>
+              {r}
+            </h2>
+            {tiesByRound[r].map((tie: any) => renderTie(tie, r))}
+          </div>
+        ))}
       </div>
     </div>
   );

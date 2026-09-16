@@ -68,9 +68,22 @@ export default function AdminPage() {
     setTeams(t || []);
   };
 
-  const handleLogin = () => {
-    if (passcode === process.env.NEXT_PUBLIC_ADMIN_PASSCODE) setIsAuthenticated(true);
-    else alert("Incorrect passcode.");
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const ch = supabase.channel("live-refresh");
+    ch.subscribe();
+    (window as any).__liveRefreshChannel = ch;
+    return () => {
+      supabase.removeChannel(ch);
+      (window as any).__liveRefreshChannel = null;
+    };
+  }, [isAuthenticated]);
+
+  const pushUpdate = () => {
+    const ch = (window as any).__liveRefreshChannel;
+    if (!ch) { alert("Channel not ready yet, try again."); return; }
+    ch.send({ type: "broadcast", event: "refresh", payload: { at: Date.now() } });
+    alert("Update pushed to Live, Standings and Bracket pages.");
   };
 
   const recalculateStandings = async () => {
@@ -409,7 +422,10 @@ export default function AdminPage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1a1a1a', paddingBottom: '16px' }}>
         <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#ffffff', margin: 0 }}>TOURNAMENT MANAGER</h1>
-        <button onClick={() => setIsAuthenticated(false)} style={{ background: 'none', border: 'none', color: '#888888', cursor: 'pointer', fontSize: '12px', textTransform: 'uppercase' }}>Logout</button>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <button onClick={pushUpdate} style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer', textTransform: 'uppercase' }}>🔄 Push Update</button>
+          <button onClick={() => setIsAuthenticated(false)} style={{ background: 'none', border: 'none', color: '#888888', cursor: 'pointer', fontSize: '12px', textTransform: 'uppercase' }}>Logout</button>
+        </div>
       </div>
 
       {/* TOURNAMENT MANAGEMENT SECTION */}
