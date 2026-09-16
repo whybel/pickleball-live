@@ -9,56 +9,58 @@ export default function Home() {
   const [selectedCategory, setSelectedCategory] = useState<string>("All Categories");
   const [competitionName, setCompetitionName] = useState("PickleballLive Tournament");
   const [loading, setLoading] = useState(true);
-  
   const [showTeamName, setShowTeamName] = useState(true);
   const [showPlayerName, setShowPlayerName] = useState(true);
 
   const categories = ["All Categories", "Singles", "Doubles", "Men's Singles", "Men's Doubles", "Women's Singles", "Women's Doubles", "Mixed Doubles"];
 
+  const fetchData = async () => {
+    const { data: m } = await supabase.from("matches").select("*, team1:team1_id(name), team2:team2_id(name)").order("match_number");
+    const { data: t } = await supabase.from("teams").select("*").order("name");
+    const { data: settings } = await supabase.from("competitions").select("*").eq("status", "active").single();
+    setMatches(m || []);
+    setTeams(t || []);
+    if (settings) {
+      setCompetitionName(settings.name);
+      setShowTeamName(settings.show_team_name !== false);
+      setShowPlayerName(settings.show_player_name !== false);
+    }
+    setLoading(false);
+  };
+
   useEffect(() => {
-    const fetchData = async () => {
-      const { data: m } = await supabase.from("matches").select("*, team1:team1_id(name), team2:team2_id(name)").order("match_number");
-      const { data: t } = await supabase.from("teams").select("*").order("name");
-      const { data: settings } = await supabase.from("competitions").select("*").eq("status", "active").single();
-      
-      setMatches(m || []);
-      setTeams(t || []);
-      if (settings) {
-        setCompetitionName(settings.name);
-        setShowTeamName(settings.show_team_name !== false);
-        setShowPlayerName(settings.show_player_name !== false);
-      }
-      setLoading(false);
-    };
     fetchData();
 
-    // Subscribe to matches, teams, and competitions changes
+    // Realtime (websocket)
     const channel = supabase
-      .channel("public:all_changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "matches" }, (payload) => {
-        setMatches((currentMatches) => {
-          if (payload.eventType === "INSERT") return [...currentMatches, payload.new];
-          else if (payload.eventType === "UPDATE") return currentMatches.map((m) => (m.id === payload.new.id ? { ...m, ...payload.new } : m));
-          else if (payload.eventType === "DELETE") return currentMatches.filter((m) => m.id !== payload.old.id);
-          return currentMatches;
-        });
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "teams" }, () => {
-        // Refresh teams when they change
-        fetchData();
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "competitions" }, () => {
-        fetchData();
-      })
+      .channel("public:live_sync")
+      .on("postgres_changes", { event: "*", schema: "public", table: "matches" }, () => fetchData())
+      .on("postgres_changes", { event: "*", schema: "public", table: "teams" }, () => fetchData())
+      .on("postgres_changes", { event: "*", schema: "public", table: "competitions" }, () => fetchData())
       .subscribe();
+
+    // Admin "Push Update" broadcast (same topic admin sends on)
+    const refreshChannel = supabase
+      .channel("live-refresh")
+      .on("broadcast", { event: "refresh" }, () => fetchData())
+      .subscribe();
+
+    // Polling fallback: guarantees fresh data every 3s even if websockets are blocked
+    const interval = setInterval(fetchData, 3000);
 
     return () => {
       supabase.removeChannel(channel);
+      supabase.removeChannel(refreshChannel);
+      clearInterval(interval);
     };
   }, []);
 
   const filteredMatches = matches.filter((match) => {
-    const teamMatch = selectedTeam === "All Teams" || match.team1?.name === selectedTeam || match.team2?.name === selectedTeam;
+    const teamMatch = selectedTeam === "All Teams" ||
+      match.team1?.name === selectedTeam ||
+      match.team2?.name === selectedTeam ||
+      match.team1_custom_name === selectedTeam ||
+      match.team2_custom_name === selectedTeam;
     const categoryMatch = selectedCategory === "All Categories" || match.category === selectedCategory;
     return teamMatch && categoryMatch;
   });
@@ -67,6 +69,16 @@ export default function Home() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+      <style>{`
+        @media print {
+          @page { margin: 1cm; size: auto; }
+          body { background-color: #0a0a0a !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .no-print { display: none !important; }
+          .match-box { break-inside: avoid; page-break-inside: avoid; margin-bottom: 16px !important; border: 1px solid #C9A959 !important; }
+          nav { display: none !important; }
+        }
+      `}</style>
+
       <div style={{ borderBottom: '1px solid #1a1a1a', paddingBottom: '24px' }}>
         <h1 style={{ fontSize: '32px', fontWeight: 'bold', color: '#ffffff', margin: '0 0 8px 0' }}>{competitionName}</h1>
         <p style={{ color: '#888888', fontSize: '14px', margin: 0 }}>Live scores and results</p>
@@ -91,67 +103,64 @@ export default function Home() {
       <div>
         <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#ffffff', marginBottom: '24px' }}>LIVE & UPCOMING MATCHES</h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {filteredMatches.map((match: any) => (
-            <div key={match.id} className="match-box" style={{ background: '#111111', border: match.is_knockout ? '1px solid #C9A959' : '1px solid #1a1a1a', borderRadius: '4px', padding: '20px' }}>
-              
-              <div style={{ marginBottom: '16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959' }}>
-                    Match #{match.match_number} {match.is_knockout && `(${match.knockout_round || match.round})`}
-                  </span>
-                  <span style={{ fontSize: '11px', color: '#888888', textTransform: 'uppercase', letterSpacing: '1px' }}>Category: {match.category}</span>
+          {filteredMatches.map((match: any) => {
+            const t1Name = match.team1_custom_name?.trim() || match.team1?.name || 'TBD';
+            const t2Name = match.team2_custom_name?.trim() || match.team2?.name || 'TBD';
+            return (
+              <div key={match.id} className="match-box" style={{ background: '#111111', border: match.is_knockout ? '1px solid #C9A959' : '1px solid #1a1a1a', borderRadius: '4px', padding: '20px' }}>
+                <div style={{ marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959' }}>
+                      Match #{match.match_number} {match.is_knockout && `(${match.knockout_round || match.round})`}
+                    </span>
+                    <span style={{ fontSize: '11px', color: '#888888', textTransform: 'uppercase', letterSpacing: '1px' }}>Category: {match.category}</span>
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#888888' }}>{match.court} | {match.scheduled_time}</div>
                 </div>
-                <div style={{ fontSize: '12px', color: '#888888' }}>{match.court} | {match.scheduled_time}</div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 0' }}>
+                  <div style={{ flex: 1, textAlign: 'center' }}>
+                    {showTeamName && (
+                      <div style={{ fontSize: '16px', fontWeight: '600', color: match.winner_id === match.team1_id ? '#C9A959' : '#ffffff', marginBottom: showPlayerName ? '4px' : '0' }}>
+                        {t1Name}
+                      </div>
+                    )}
+                    {showPlayerName && (
+                      <div style={{ fontSize: '12px', color: '#888888' }}>{match.team1_players?.trim() || match.game_type || '-'}</div>
+                    )}
+                  </div>
+                  <div style={{ textAlign: 'center', minWidth: '120px' }}>
+                    {match.status === 'completed' || match.status === 'live' ? (
+                      <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#ffffff' }}>{match.team1_score} - {match.team2_score}</div>
+                    ) : (
+                      <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#888888' }}>VS</div>
+                    )}
+                  </div>
+                  <div style={{ flex: 1, textAlign: 'center' }}>
+                    {showTeamName && (
+                      <div style={{ fontSize: '16px', fontWeight: '600', color: match.winner_id === match.team2_id ? '#C9A959' : '#ffffff', marginBottom: showPlayerName ? '4px' : '0' }}>
+                        {t2Name}
+                      </div>
+                    )}
+                    {showPlayerName && (
+                      <div style={{ fontSize: '12px', color: '#888888' }}>{match.team2_players?.trim() || match.game_type || '-'}</div>
+                    )}
+                  </div>
+                </div>
+
+                {match.status === 'completed' && (
+                  <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #1a1a1a', textAlign: 'center' }}>
+                    <span style={{ fontSize: '12px', color: '#22c55e', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: '600' }}>Winner: {match.winner_id === match.team1_id ? t1Name : t2Name}</span>
+                  </div>
+                )}
+                {match.status === 'live' && (
+                  <div style={{ marginTop: '12px', padding: '8px', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '4px', textAlign: 'center' }}>
+                    <span style={{ fontSize: '11px', color: '#3b82f6', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 'bold' }}>LIVE</span>
+                  </div>
+                )}
               </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 0' }}>
-                <div style={{ flex: 1, textAlign: 'center' }}>
-                  {showTeamName && (
-                    <div style={{ fontSize: '16px', fontWeight: '600', color: match.winner_id === match.team1_id ? '#C9A959' : '#ffffff', marginBottom: showPlayerName ? '4px' : '0' }}>
-                      {match.team1_custom_name || match.team1?.name || 'TBD'}
-                    </div>
-                  )}
-                  {showPlayerName && (
-                    <div style={{ fontSize: '12px', color: '#888888' }}>
-                      {match.team1_players || match.game_type || '-'}
-                    </div>
-                  )}
-                </div>
-
-                <div style={{ textAlign: 'center', minWidth: '120px' }}>
-                  {match.status === 'completed' || match.status === 'live' ? (
-                    <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#ffffff' }}>{match.team1_score} - {match.team2_score}</div>
-                  ) : (
-                    <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#888888' }}>VS</div>
-                  )}
-                </div>
-
-                <div style={{ flex: 1, textAlign: 'center' }}>
-                  {showTeamName && (
-                    <div style={{ fontSize: '16px', fontWeight: '600', color: match.winner_id === match.team2_id ? '#C9A959' : '#ffffff', marginBottom: showPlayerName ? '4px' : '0' }}>
-                      {match.team2_custom_name || match.team2?.name || 'TBD'}
-                    </div>
-                  )}
-                  {showPlayerName && (
-                    <div style={{ fontSize: '12px', color: '#888888' }}>
-                      {match.team2_players || match.game_type || '-'}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {match.status === 'completed' && (
-                <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #1a1a1a', textAlign: 'center' }}>
-                  <span style={{ fontSize: '12px', color: '#22c55e', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: '600' }}>Winner: {match.winner_id === match.team1_id ? (match.team1_custom_name || match.team1?.name) : (match.team2_custom_name || match.team2?.name)}</span>
-                </div>
-              )}
-              {match.status === 'live' && (
-                <div style={{ marginTop: '12px', padding: '8px', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '4px', textAlign: 'center' }}>
-                  <span style={{ fontSize: '11px', color: '#3b82f6', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 'bold' }}>LIVE</span>
-                </div>
-              )}
-            </div>
-          ))}
+            );
+          })}
           {filteredMatches.length === 0 && <div style={{ textAlign: 'center', padding: '48px', color: '#888888' }}>No matches found</div>}
         </div>
       </div>
