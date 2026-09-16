@@ -24,7 +24,6 @@ export default function AdminPage() {
   const [tournamentFormat, setTournamentFormat] = useState("round_robin_knockout");
   const [tournamentType, setTournamentType] = useState("tournament");
 
-  // New state for editing tournament name and creating new
   const [editTournamentName, setEditTournamentName] = useState("");
   const [newTournamentName, setNewTournamentName] = useState("");
 
@@ -39,9 +38,12 @@ export default function AdminPage() {
   useEffect(() => {
     if (isAuthenticated && currentCompId) {
       fetchData();
-      // Load current tournament name for editing
       const currentComp = competitions.find(c => c.id === currentCompId);
-      if (currentComp) setEditTournamentName(currentComp.name);
+      if (currentComp) {
+        setEditTournamentName(currentComp.name);
+        setTournamentFormat(currentComp.format_type || "round_robin_knockout");
+        setTournamentType(currentComp.competition_type || "tournament");
+      }
     }
   }, [isAuthenticated, currentCompId]);
 
@@ -96,7 +98,21 @@ export default function AdminPage() {
     fetchData();
   };
 
-  // NEW: Reset All Scores (keeps matches, resets scores)
+  const updateLiveScore = async (matchId: string, t1: number, t2: number) => {
+    await supabase.from("matches").update({ team1_score: t1, team2_score: t2, status: "live" }).eq("id", matchId);
+    fetchData();
+  };
+
+  const completeMatch = async (matchId: string, t1: number, t2: number, t1Id: string, t2Id: string) => {
+    const winner = t1 > t2 ? t1Id : t2Id;
+    await supabase.from("matches").update({ team1_score: t1, team2_score: t2, winner_id: winner, status: "completed" }).eq("id", matchId);
+    if (!matches.find(m => m.id === matchId)?.is_knockout) {
+      await recalculateStandings();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+    fetchData();
+  };
+
   const resetAllScores = async () => {
     if (!confirm("WARNING: This will reset ALL match scores to 0 and clear standings. Matches will remain. Continue?")) return;
     if (!confirm("Are you sure? This cannot be undone.")) return;
@@ -125,7 +141,6 @@ export default function AdminPage() {
     alert("Live display settings saved!");
   };
 
-  // NEW: Save edited tournament name
   const saveTournamentName = async () => {
     if (!editTournamentName.trim()) return alert("Tournament name cannot be empty");
     await supabase.from("competitions").update({ name: editTournamentName }).eq("id", currentCompId);
@@ -133,7 +148,6 @@ export default function AdminPage() {
     fetchCompetitions();
   };
 
-  // NEW: Create new tournament
   const createNewTournament = async () => {
     if (!newTournamentName.trim()) return alert("Please enter a tournament name");
     
@@ -151,7 +165,6 @@ export default function AdminPage() {
       return;
     }
 
-    // Archive all other competitions
     await supabase.from("competitions").update({ status: 'archived' }).neq("id", data.id);
 
     alert("New tournament created successfully!");
@@ -204,34 +217,6 @@ export default function AdminPage() {
     else fetchData();
   };
 
-  const updateLiveScore = async (matchId: string, t1: number, t2: number) => {
-    await supabase.from("matches").update({ team1_score: t1, team2_score: t2, status: "live" }).eq("id", matchId);
-    fetchData();
-  };
-
-  const completeMatch = async (matchId: string, t1: number, t2: number, t1Id: string, t2Id: string) => {
-
-  const completeMatch = async (matchId: string, t1: number, t2: number, t1Id: string, t2Id: string) => {
-  const winner = t1 > t2 ? t1Id : t2Id;
-  
-  // Update match
-  await supabase.from("matches").update({ 
-    team1_score: t1, 
-    team2_score: t2, 
-    winner_id: winner, 
-    status: "completed" 
-  }).eq("id", matchId);
-  
-  // Recalculate standings if not knockout
-  if (!matches.find(m => m.id === matchId)?.is_knockout) {
-    await recalculateStandings();
-    // Small delay to ensure database update completes
-    await new Promise(resolve => setTimeout(resolve, 300));
-  }
-  
-  fetchData();
-};
-
   const exportDatabase = async () => {
     if (!currentCompId) return alert("No competition selected");
     
@@ -279,10 +264,8 @@ export default function AdminPage() {
         return;
       }
 
-      // Archive ALL existing competitions
       await supabase.from("competitions").update({ status: 'archived' });
 
-      // Create new competition WITHOUT "(Imported)" suffix
       const { data: newComp, error: compError } = await supabase.from("competitions").insert([{
         name: importData.competition.name,
         format_type: importData.competition.format_type,
@@ -433,7 +416,6 @@ export default function AdminPage() {
       <div style={{ background: '#111111', border: '2px solid #C9A959', borderRadius: '4px', padding: '24px' }}>
         <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '16px' }}>Tournament Management</h2>
         
-        {/* Switch Competition */}
         <div style={{ marginBottom: '20px' }}>
           <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '8px' }}>Switch Competition</label>
           <select value={currentCompId} onChange={(e) => { setCurrentCompId(e.target.value); const comp = competitions.find(c => c.id === e.target.value); if (comp) { setEditTournamentName(comp.name); setTournamentFormat(comp.format_type || 'round_robin_knockout'); setTournamentType(comp.competition_type || 'tournament'); }}} style={{ width: '100%', padding: '10px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
@@ -441,7 +423,6 @@ export default function AdminPage() {
           </select>
         </div>
 
-        {/* Edit Tournament Name */}
         <div style={{ marginBottom: '20px' }}>
           <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '8px' }}>Edit Tournament Name</label>
           <div style={{ display: 'flex', gap: '8px' }}>
@@ -450,7 +431,6 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {/* Create New Tournament */}
         <div style={{ marginBottom: '20px', paddingTop: '20px', borderTop: '1px solid #1a1a1a' }}>
           <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '8px' }}>Create New Tournament</label>
           <div style={{ display: 'flex', gap: '8px' }}>
@@ -459,7 +439,6 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {/* Tournament Format */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
           <div>
             <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '8px' }}>Competition Type</label>
@@ -649,7 +628,7 @@ export default function AdminPage() {
                     style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}
                   >
                     Complete
-                  </button> as HTMLInputElement).value); const s2 = parseInt((document.getElementById(`t2-${match.id}`) as HTMLInputElement).value); if(!isNaN(s1) && !isNaN(s2)) completeMatch(match.id, s1, s2, match.team1_id, match.team2_id); }} style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Complete</button>
+                  </button>
                 </div>
               )}
               {match.status === 'completed' && <div style={{ color: '#22c55e', fontSize: '14px', marginTop: '12px', textAlign: 'center' }}>Completed: {match.team1_score} - {match.team2_score} | Winner: {match.winner_id === match.team1_id ? (match.team1_custom_name || match.team1?.name) : (match.team2_custom_name || match.team2?.name)}</div>}
@@ -718,7 +697,26 @@ export default function AdminPage() {
                       <div style={{ fontSize: '12px', color: '#888888', marginTop: '4px' }}>Player/s: {match.team2_players || '-'}</div>
                       <input type="number" id={`t2-${match.id}`} defaultValue={match.team2_score || 0} style={{ width: '60px', padding: '8px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', textAlign: 'center', marginTop: '8px' }} />
                     </div>
-                    <button onClick={() => { const s1 = parseInt((document.getElementById(`t1-${match.id}`) as HTMLInputElement).value); const s2 = parseInt((document.getElementById(`t2-${match.id}`) as HTMLInputElement).value); if(!isNaN(s1) && !isNaN(s2)) completeMatch(match.id, s1, s2, match.team1_id, match.team2_id); }} style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Complete</button>
+                    <button 
+                      onClick={() => { 
+                        const s1 = parseInt((document.getElementById(`t1-${match.id}`) as HTMLInputElement).value); 
+                        const s2 = parseInt((document.getElementById(`t2-${match.id}`) as HTMLInputElement).value); 
+                        if(!isNaN(s1) && !isNaN(s2)) updateLiveScore(match.id, s1, s2); 
+                      }} 
+                      style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginRight: '8px' }}
+                    >
+                      Update Live Score
+                    </button>
+                    <button 
+                      onClick={() => { 
+                        const s1 = parseInt((document.getElementById(`t1-${match.id}`) as HTMLInputElement).value); 
+                        const s2 = parseInt((document.getElementById(`t2-${match.id}`) as HTMLInputElement).value); 
+                        if(!isNaN(s1) && !isNaN(s2)) completeMatch(match.id, s1, s2, match.team1_id, match.team2_id); 
+                      }} 
+                      style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}
+                    >
+                      Complete
+                    </button>
                   </div>
                 )}
                 {match.status === 'completed' && <div style={{ color: '#22c55e', fontSize: '14px', marginTop: '12px', textAlign: 'center' }}>Completed: {match.team1_score} - {match.team2_score} | Winner: {match.winner_id === match.team1_id ? (match.team1_custom_name || match.team1?.name) : (match.team2_custom_name || match.team2?.name)}</div>}
