@@ -15,23 +15,35 @@ export default function Home() {
   const categories = ["All Categories", "Singles", "Doubles", "Men's Singles", "Men's Doubles", "Women's Singles", "Women's Doubles", "Mixed Doubles"];
 
   const fetchData = async () => {
-    const { data: m } = await supabase.from("matches").select("*, team1:team1_id(name), team2:team2_id(name)").order("match_number");
+    const { data: comps } = await supabase
+      .from("competitions")
+      .select("*")
+      .eq("status", "active")
+      .order("created_at", { ascending: false });
+    const comp = comps && comps[0];
+    if (!comp) {
+      setMatches([]);
+      setTeams([]);
+      setLoading(false);
+      return;
+    }
+    const { data: m } = await supabase
+      .from("matches")
+      .select("*, team1:team1_id(name), team2:team2_id(name)")
+      .eq("competition_id", comp.id)
+      .order("match_number");
     const { data: t } = await supabase.from("teams").select("*").order("name");
-    const { data: settings } = await supabase.from("competitions").select("*").eq("status", "active").single();
+    setCompetitionName(comp.name);
+    setShowTeamName(comp.show_team_name !== false);
+    setShowPlayerName(comp.show_player_name !== false);
     setMatches(m || []);
     setTeams(t || []);
-    if (settings) {
-      setCompetitionName(settings.name);
-      setShowTeamName(settings.show_team_name !== false);
-      setShowPlayerName(settings.show_player_name !== false);
-    }
     setLoading(false);
   };
 
   useEffect(() => {
     fetchData();
 
-    // Realtime (websocket)
     const channel = supabase
       .channel("public:live_sync")
       .on("postgres_changes", { event: "*", schema: "public", table: "matches" }, () => fetchData())
@@ -39,13 +51,11 @@ export default function Home() {
       .on("postgres_changes", { event: "*", schema: "public", table: "competitions" }, () => fetchData())
       .subscribe();
 
-    // Admin "Push Update" broadcast (same topic admin sends on)
     const refreshChannel = supabase
       .channel("live-refresh")
       .on("broadcast", { event: "refresh" }, () => fetchData())
       .subscribe();
 
-    // Polling fallback: guarantees fresh data every 3s even if websockets are blocked
     const interval = setInterval(fetchData, 3000);
 
     return () => {

@@ -10,9 +10,21 @@ export default function BracketPage() {
   const [loading, setLoading] = useState(true);
 
   const fetchData = async () => {
+    const { data: comps } = await supabase
+      .from("competitions")
+      .select("id")
+      .eq("status", "active")
+      .order("created_at", { ascending: false });
+    const compId = comps && comps[0] ? comps[0].id : null;
+    if (!compId) {
+      setKoMatches([]);
+      setLoading(false);
+      return;
+    }
     const { data } = await supabase
       .from("matches")
       .select("*, team1:team1_id(name), team2:team2_id(name)")
+      .eq("competition_id", compId)
       .eq("is_knockout", true)
       .order("match_number");
     setKoMatches(data || []);
@@ -21,15 +33,19 @@ export default function BracketPage() {
 
   useEffect(() => {
     fetchData();
+
     const channel = supabase
       .channel("bracket-data")
       .on("postgres_changes", { event: "*", schema: "public", table: "matches" }, () => fetchData())
       .subscribe();
+
     const refreshChannel = supabase
       .channel("live-refresh")
       .on("broadcast", { event: "refresh" }, () => fetchData())
       .subscribe();
+
     const interval = setInterval(fetchData, 3000);
+
     return () => {
       supabase.removeChannel(channel);
       supabase.removeChannel(refreshChannel);

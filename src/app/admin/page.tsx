@@ -106,8 +106,9 @@ export default function AdminPage() {
     }
   };
 
-  const fetchData = async () => {
-    const { data: m } = await supabase.from("matches").select("*, team1:team1_id(name), team2:team2_id(name)").eq("competition_id", currentCompId).order("match_number");
+  const fetchData = async (compId?: string) => {
+    const id = compId || currentCompId;
+    const { data: m } = await supabase.from("matches").select("*, team1:team1_id(name), team2:team2_id(name)").eq("competition_id", id).order("match_number");
     const { data: t } = await supabase.from("teams").select("*").order("name");
     setMatches(m || []);
     setTeams(t || []);
@@ -227,13 +228,15 @@ export default function AdminPage() {
   };
 
   const wipeCompetition = async () => {
-    if (!confirm("WARNING: This will DELETE all matches and standings for the current competition. This cannot be undone.")) return;
+    if (!confirm("WARNING: This will DELETE all games for the current competition and reset its standings to zero. Teams are kept.")) return;
     if (!confirm("Are you absolutely sure?")) return;
     await supabase.from("matches").delete().eq("competition_id", currentCompId);
-    await supabase.from("group_standings").delete().eq("competition_id", currentCompId);
+    await supabase.from("group_standings").update({
+      matches_played: 0, wins: 0, losses: 0, games_won: 0, games_lost: 0, points_for: 0, points_against: 0
+    }).eq("competition_id", currentCompId);
     await fetchData();
     notify();
-    alert("Competition data wiped successfully.");
+    alert("Competition wiped: games removed, standings zeroed, teams kept.");
   };
 
   const addMatch = async () => {
@@ -306,52 +309,86 @@ export default function AdminPage() {
     try {
       const text = await file.text();
       const importData = JSON.parse(text);
-      if (!confirm(`Import tournament "${importData.competition?.name}"? This will archive your current tournament and create a new one.`)) { event.target.value = ''; return; }
+      if (!importData?.competition || !Array.isArray(importData?.matches)) {
+        alert("Invalid JSON file: missing competition or matches.");
+        event.target.value = '';
+        return;
+      }
+      if (!confirm(`Import "${String(importData.competition.name).trim()}" (${importData.matches.length} games)? The current tournament will be archived.`)) {
+        event.target.value = '';
+        return;
+      }
+
       await supabase.from("competitions").update({ status: 'archived' });
       const { data: newComp, error: compError } = await supabase.from("competitions").insert([{
-        name: importData.competition.name, format_type: importData.competition.format_type,
-        competition_type: importData.competition.competition_type, show_team_name: importData.competition.show_team_name,
-        show_player_name: importData.competition.show_player_name, status: 'active'
+        name: String(importData.competition.name).trim(),
+        format_type: importData.competition.format_type || 'GroupToKnockout',
+        competition_type: importData.competition.competition_type || 'Tournament',
+        show_team_name: importData.competition.show_team_name !== false,
+        show_player_name: importData.competition.show_player_name !== false,
+        status: 'active'
       }]).select().single();
-      if (compError) throw compError;
-      const existingTeams: any[] = [];
-      for (const team of importData.teams) {
-        const { data: existingTeam } = await supabase.from("teams").select("*").eq("name", team.name).single();
-        if (existingTeam) existingTeams.push({ old_id: team.id, new_id: existingTeam.id });
+      if (compError || !newComp) throw new Error(compError?.message || 'Could not create competition');
+
+      const idMap: Record<string, string> = {};
+      for (const team of (importData.teams || [])) {
+        const name = String(team.name || '').trim();
+        if (!name || !team.id) continue;
+        const { data: existing } = await supabase.from("teams").select("*").eq("name", name).limit(1);
+        if (existing && existing.length > 0) idMap[team.id] = existing[0].id;
         else {
-          const { data: newTeam } = await supabase.from("teams").insert([{ name: team.name }]).select().single();
-          existingTeams.push({ old_id: team.id, new_id: newTeam.id });
+          const { data: created, error: tErr } = await supabase.from("teams").insert([{ name, group: team.group || null }]).select().single();
+          if (tErr || !created) throw new Error('Team insert failed: ' + (tErr?.message || name));
+          idMap[team.id] = created.id;
         }
       }
+
+      let ok = 0, failed = 0;
       for (const match of importData.matches) {
-        const team1New = existingTeams.find(t => t.old_id === match.team1_id)?.new_id || match.team1_id;
-        const team2New = existingTeams.find(t => t.old_id === match.team2_id)?.new_id || match.team2_id;
-        await supabase.from("matches").insert([{
-          competition_id: newComp.id, match_number: match.match_number, is_knockout: match.is_knockout,
-          knockout_round: match.knockout_round, round: match.round, category: match.category, court: match.court,
-          scheduled_time: match.scheduled_time, game_type: match.game_type, status: match.status,
-          team1_id: team1New, team2_id: team2New, team1_score: match.team1_score, team2_score: match.team2_score,
-          winner_id: match.winner_id, team1_players: match.team1_players, team2_players: match.team2_players,
-          team1_custom_name: match.team1_custom_name, team2_custom_name: match.team2_custom_name
+        const t1 = match.team1_id ? (idMap[match.team1_id] || null) : null;
+        const t2 = match.team2_id ? (idMap[match.team2_id] || null) : null;
+        const { error: mErr } = await supabase.from("matches").insert([{
+          competition_id: newComp.id,
+          match_number: match.match_number,
+          is_knockout: !!match.is_knockout,
+          knockout_round: match.knockout_round || null,
+          round: match.round || 'Round 1',
+          category: match.category || 'Doubles',
+          court: match.court || 'TBD',
+          scheduled_time: match.scheduled_time || 'TBD',
+          game_type: match.game_type || 'TBD',
+          status: match.status || 'upcoming',
+          team1_id: t1,
+          team2_id: t2,
+          team1_score: match.team1_score || 0,
+          team2_score: match.team2_score || 0,
+          winner_id: match.winner_id ? (idMap[match.winner_id] || null) : null,
+          team1_players: match.team1_players || '',
+          team2_players: match.team2_players || '',
+          team1_custom_name: String(match.team1_custom_name || '').trim(),
+          team2_custom_name: String(match.team2_custom_name || '').trim()
         }]);
+        if (mErr) { failed++; console.error('Match insert failed:', mErr.message); } else ok++;
       }
-      for (const standing of importData.standings) {
-        const teamNew = existingTeams.find(t => t.old_id === standing.team_id)?.new_id || standing.team_id;
+
+      for (const team of (importData.teams || [])) {
+        const newId = team.id ? idMap[team.id] : null;
+        if (!newId) continue;
         await supabase.from("group_standings").insert([{
-          competition_id: newComp.id, team_id: teamNew, group: standing.group, matches_played: standing.matches_played,
-          wins: standing.wins, losses: standing.losses, points_for: standing.points_for, points_against: standing.points_against,
-          games_won: standing.games_won || 0, games_lost: standing.games_lost || 0, rank: standing.rank
+          competition_id: newComp.id, team_id: newId, group: team.group || null,
+          matches_played: 0, wins: 0, losses: 0, games_won: 0, games_lost: 0, points_for: 0, points_against: 0
         }]);
       }
+
       setCurrentCompId(newComp.id);
       await fetchCompetitions();
-      await fetchData();
+      await fetchData(newComp.id);
       notify();
-      alert("Tournament imported successfully!");
+      alert(`Import complete: ${ok} games loaded${failed ? `, ${failed} FAILED (see console)` : ''}.`);
       event.target.value = '';
-    } catch (error) {
-      console.error("Import error:", error);
-      alert("Error importing database: " + (error as any).message);
+    } catch (error: any) {
+      console.error('Import error:', error);
+      alert('Import failed: ' + (error?.message || 'unknown error'));
       event.target.value = '';
     }
   };
