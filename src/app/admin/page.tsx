@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 
+/* ---------------- Module-level TeamSelect (stable identity = custom name input never disappears) ---------------- */
 function TeamSelect({ matchId, teamId, customName, teamNum, teamsList, onUpdate }: any) {
   const [mode, setMode] = useState(customName ? "custom" : "team");
   const [text, setText] = useState(customName || "");
@@ -49,6 +50,8 @@ function TeamSelect({ matchId, teamId, customName, teamNum, teamsList, onUpdate 
     </div>
   );
 }
+
+/* ---------------- Admin Page ---------------- */
 export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passcode, setPasscode] = useState("");
@@ -68,13 +71,22 @@ export default function AdminPage() {
   const [newMatchCourt, setNewMatchCourt] = useState("Court 1");
   const [newMatchTime, setNewMatchTime] = useState("4:30 PM");
 
-  const [tournamentFormat, setTournamentFormat] = useState("round_robin_knockout");
-  const [tournamentType, setTournamentType] = useState("tournament");
+  const [tournamentFormat, setTournamentFormat] = useState("GroupToKnockout");
+  const [tournamentType, setTournamentType] = useState("Tournament");
   const [editTournamentName, setEditTournamentName] = useState("");
   const [newTournamentName, setNewTournamentName] = useState("");
 
+  const [friendlyTeamA, setFriendlyTeamA] = useState("");
+  const [friendlyTeamB, setFriendlyTeamB] = useState("");
+  const [friendlyMD, setFriendlyMD] = useState(4);
+  const [friendlyWD, setFriendlyWD] = useState(4);
+  const [friendlyXD, setFriendlyXD] = useState(7);
+  const [friendlyStart, setFriendlyStart] = useState("9:00 AM");
+
   const categories = ["Singles", "Doubles", "Men's Singles", "Men's Doubles", "Women's Singles", "Women's Doubles", "Mixed Doubles"];
   const knockoutSlots = ["SF1", "SF2", "Final", "Quarter-Final", "Semi-Final", "R16", "R32", "R64", "R128"];
+
+  const isFriendlyNow = (tournamentType || "").toLowerCase() === "friendly";
 
   useEffect(() => {
     if (isAuthenticated) fetchCompetitions();
@@ -83,14 +95,26 @@ export default function AdminPage() {
   useEffect(() => {
     if (isAuthenticated && currentCompId) {
       fetchData();
-      const currentComp = competitions.find(c => c.id === currentCompId);
+      const currentComp = competitions.find((c: any) => c.id === currentCompId);
       if (currentComp) {
         setEditTournamentName(currentComp.name);
-        setTournamentFormat(currentComp.format_type || "round_robin_knockout");
-        setTournamentType(currentComp.competition_type || "tournament");
+        setTournamentFormat(currentComp.format_type || "GroupToKnockout");
+        setTournamentType(currentComp.competition_type || "Tournament");
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, currentCompId]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const ch = supabase.channel("live-refresh");
+    ch.subscribe();
+    (window as any).__liveRefreshChannel = ch;
+    return () => {
+      supabase.removeChannel(ch);
+      (window as any).__liveRefreshChannel = null;
+    };
+  }, [isAuthenticated]);
 
   const fetchCompetitions = async () => {
     const { data } = await supabase.from("competitions").select("*").order("created_at", { ascending: false });
@@ -100,8 +124,8 @@ export default function AdminPage() {
       setCurrentCompId(activeComp.id);
       setShowTeamName(activeComp.show_team_name !== false);
       setShowPlayerName(activeComp.show_player_name !== false);
-      setTournamentFormat(activeComp.format_type || "round_robin_knockout");
-      setTournamentType(activeComp.competition_type || "tournament");
+      setTournamentFormat(activeComp.format_type || "GroupToKnockout");
+      setTournamentType(activeComp.competition_type || "Tournament");
       setEditTournamentName(activeComp.name);
     }
   };
@@ -119,19 +143,6 @@ export default function AdminPage() {
     else alert("Incorrect passcode.");
   };
 
-  // Broadcast channel on the SAME topic public pages listen to
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    const ch = supabase.channel("live-refresh");
-    ch.subscribe();
-    (window as any).__liveRefreshChannel = ch;
-    return () => {
-      supabase.removeChannel(ch);
-      (window as any).__liveRefreshChannel = null;
-    };
-  }, [isAuthenticated]);
-
-  // Instant push to all public pages
   const notify = () => {
     const ch = (window as any).__liveRefreshChannel;
     if (ch) ch.send({ type: "broadcast", event: "refresh", payload: { at: Date.now() } });
@@ -140,6 +151,11 @@ export default function AdminPage() {
   const pushUpdate = () => {
     notify();
     alert("Update pushed to Live, Standings and Bracket pages.");
+  };
+
+  const saveSettings = async (compId: string, settings: any) => {
+    const { error } = await supabase.from("competitions").update({ settings }).eq("id", compId);
+    if (error) console.warn("settings not saved:", error.message);
   };
 
   const recalculateStandings = async () => {
@@ -156,14 +172,16 @@ export default function AdminPage() {
   };
 
   const deleteMatch = async (id: string) => {
-    if (!confirm("Delete this match?")) return;
+    if (!confirm("Delete this game? If it is a group game, standings will be recalculated.")) return;
+    const wasGroup = !matches.find((m: any) => m.id === id)?.is_knockout;
     await supabase.from("matches").delete().eq("id", id);
+    if (wasGroup) await recalculateStandings();
     await fetchData();
     notify();
   };
 
   const resetMatchScore = async (matchId: string) => {
-    if (!confirm("Reset this match score?")) return;
+    if (!confirm("Reset this game score?")) return;
     await supabase.from("matches").update({ team1_score: 0, team2_score: 0, winner_id: null, status: "upcoming" }).eq("id", matchId);
     await recalculateStandings();
     await fetchData();
@@ -180,21 +198,38 @@ export default function AdminPage() {
     if (t1 === t2) { alert("Scores cannot be equal. Please enter the correct scores."); return; }
     const winner = t1 > t2 ? t1Id : t2Id;
     await supabase.from("matches").update({ team1_score: t1, team2_score: t2, winner_id: winner, status: "completed" }).eq("id", matchId);
-    if (!matches.find(m => m.id === matchId)?.is_knockout) {
-      await recalculateStandings();
-    }
+    if (!matches.find((m: any) => m.id === matchId)?.is_knockout) await recalculateStandings();
     await fetchData();
     notify();
   };
 
+  const readScores = (matchId: string) => {
+    const el1 = document.getElementById(`t1-${matchId}`) as HTMLInputElement | null;
+    const el2 = document.getElementById(`t2-${matchId}`) as HTMLInputElement | null;
+    const s1 = parseInt(el1?.value ?? "");
+    const s2 = parseInt(el2?.value ?? "");
+    if (isNaN(s1) || isNaN(s2)) { alert("Please enter both scores (enter 0 if none)."); return null; }
+    return { s1, s2 };
+  };
+
   const resetAllScores = async () => {
-    if (!confirm("WARNING: This will reset ALL match scores to 0 and clear standings. Matches will remain. Continue?")) return;
+    if (!confirm("WARNING: This will reset ALL game scores to 0 and clear standings. Games will remain. Continue?")) return;
     if (!confirm("Are you sure? This cannot be undone.")) return;
     await supabase.from("matches").update({ team1_score: 0, team2_score: 0, winner_id: null, status: "upcoming" }).eq("competition_id", currentCompId);
-    await supabase.from("group_standings").update({ matches_played: 0, wins: 0, losses: 0, points_for: 0, points_against: 0, games_won: 0, games_lost: 0 }).eq("competition_id", currentCompId);
+    await supabase.from("group_standings").update({ matches_played: 0, wins: 0, losses: 0, games_won: 0, games_lost: 0, points_for: 0, points_against: 0 }).eq("competition_id", currentCompId);
     await fetchData();
     notify();
     alert("All scores reset successfully!");
+  };
+
+  const wipeCompetition = async () => {
+    if (!confirm("WARNING: This will DELETE all games for the current competition and reset its standings to zero. Teams are kept.")) return;
+    if (!confirm("Are you absolutely sure?")) return;
+    await supabase.from("matches").delete().eq("competition_id", currentCompId);
+    await supabase.from("group_standings").update({ matches_played: 0, wins: 0, losses: 0, games_won: 0, games_lost: 0, points_for: 0, points_against: 0 }).eq("competition_id", currentCompId);
+    await fetchData();
+    notify();
+    alert("Competition wiped: games removed, standings zeroed, teams kept.");
   };
 
   const saveDisplaySettings = async () => {
@@ -214,34 +249,26 @@ export default function AdminPage() {
   const createNewTournament = async () => {
     if (!newTournamentName.trim()) return alert("Please enter a tournament name");
     const { data, error } = await supabase.from("competitions").insert([{
-      name: newTournamentName, format_type: tournamentFormat, competition_type: tournamentType,
-      show_team_name: true, show_player_name: true, status: 'active'
+      name: newTournamentName,
+      format_type: tournamentFormat,
+      competition_type: tournamentType,
+      show_team_name: true,
+      show_player_name: true,
+      status: 'active'
     }]).select().single();
     if (error) { alert("Error creating tournament: " + error.message); return; }
     await supabase.from("competitions").update({ status: 'archived' }).neq("id", data.id);
     setCurrentCompId(data.id);
     setNewTournamentName("");
     await fetchCompetitions();
-    await fetchData();
+    await fetchData(data.id);
     notify();
     alert("New tournament created successfully!");
   };
 
-  const wipeCompetition = async () => {
-    if (!confirm("WARNING: This will DELETE all games for the current competition and reset its standings to zero. Teams are kept.")) return;
-    if (!confirm("Are you absolutely sure?")) return;
-    await supabase.from("matches").delete().eq("competition_id", currentCompId);
-    await supabase.from("group_standings").update({
-      matches_played: 0, wins: 0, losses: 0, games_won: 0, games_lost: 0, points_for: 0, points_against: 0
-    }).eq("competition_id", currentCompId);
-    await fetchData();
-    notify();
-    alert("Competition wiped: games removed, standings zeroed, teams kept.");
-  };
-
   const addMatch = async () => {
     const isKnockout = newMatchType === 'knockout';
-    const maxMatchNum = matches.length > 0 ? Math.max(...matches.map(m => m.match_number)) : 0;
+    const maxMatchNum = matches.length > 0 ? Math.max(...matches.map((m: any) => m.match_number)) : 0;
     const koRound = newMatchRound === 'SF1' || newMatchRound === 'SF2' ? 'Semi-Final' : newMatchRound;
     const { error } = await supabase.from("matches").insert([{
       competition_id: currentCompId, match_number: maxMatchNum + 1, is_knockout: isKnockout,
@@ -249,14 +276,13 @@ export default function AdminPage() {
       category: newMatchCategory, court: newMatchCourt, scheduled_time: newMatchTime,
       game_type: 'TBD', status: 'upcoming', team1_score: 0, team2_score: 0, team1_players: '', team2_players: ''
     }]);
-    if (error) alert("Error adding match: " + error.message);
+    if (error) alert("Error adding game: " + error.message);
     else { await fetchData(); notify(); }
   };
 
-  // FIXED: creates exactly 9 knockout matches (SF1 x3 games, SF2 x3 games, Final x3 games)
   const generateKnockoutStage = async () => {
     if (!confirm("This will create the Knockout Stage: Semi-Final 1 (3 games), Semi-Final 2 (3 games) and the Final (3 games). Continue?")) return;
-    const maxMatchNum = matches.length > 0 ? Math.max(...matches.map(m => m.match_number)) : 0;
+    const maxMatchNum = matches.length > 0 ? Math.max(...matches.map((m: any) => m.match_number)) : 0;
     let n = maxMatchNum + 1;
     const plan = [
       { round: 'SF1', ko: 'Semi-Final', gt: 'Doubles 1', cat: 'Doubles', court: 'Court 1/A4', time: '4:30 PM' },
@@ -269,7 +295,7 @@ export default function AdminPage() {
       { round: 'Final', ko: 'Final', gt: 'Doubles 2', cat: 'Doubles', court: 'Court 2/A5', time: '5:00 PM' },
       { round: 'Final', ko: 'Final', gt: 'Singles', cat: 'Singles', court: 'Court 3/A6', time: '5:00 PM' },
     ];
-    const rows = plan.map(g => ({
+    const rows = plan.map((g) => ({
       competition_id: currentCompId, match_number: n++, is_knockout: true, knockout_round: g.ko, round: g.round,
       category: g.cat, court: g.court, scheduled_time: g.time, game_type: g.gt, status: 'upcoming',
       team1_score: 0, team2_score: 0, team1_players: g.gt, team2_players: g.gt
@@ -277,6 +303,69 @@ export default function AdminPage() {
     const { error } = await supabase.from("matches").insert(rows);
     if (error) alert("Error generating: " + error.message);
     else { await fetchData(); notify(); alert("Knockout stage created: SF1, SF2 and Final (3 games each)."); }
+  };
+
+  const generateFriendlySchedule = async () => {
+    const a = friendlyTeamA.trim(), b = friendlyTeamB.trim();
+    if (!a || !b) return alert("Please enter both team names.");
+    if (a.toLowerCase() === b.toLowerCase()) return alert("Teams must be different.");
+    const total = friendlyMD + friendlyWD + friendlyXD;
+    if (total < 1) return alert("Add at least one game.");
+    if (!confirm(`Create ${total} games (${friendlyMD} MD, ${friendlyWD} WD, ${friendlyXD} XD) between "${a}" and "${b}"?`)) return;
+
+    const getTeam = async (name: string) => {
+      const { data: ex } = await supabase.from("teams").select("*").eq("name", name).limit(1);
+      if (ex && ex[0]) return ex[0];
+      const { data: created } = await supabase.from("teams").insert([{ name, group: null }]).select().single();
+      return created;
+    };
+    const teamA = await getTeam(a);
+    const teamB = await getTeam(b);
+    if (!teamA || !teamB) return alert("Could not create teams.");
+
+    const games: { gt: string; cat: string }[] = [];
+    for (let i = 1; i <= friendlyMD; i++) games.push({ gt: `Men's Doubles ${i}`, cat: "Men's Doubles" });
+    for (let i = 1; i <= friendlyWD; i++) games.push({ gt: `Women's Doubles ${i}`, cat: "Women's Doubles" });
+    for (let i = 1; i <= friendlyXD; i++) games.push({ gt: `Mixed Doubles ${i}`, cat: "Mixed Doubles" });
+
+    const courts = ["Court 1/A4", "Court 2/A5", "Court 3/A6", "Court 4/B5", "Court 5/B6"];
+    const parts = friendlyStart.trim().split(" ");
+    const hm = (parts[0] || "9:00").split(":");
+    let h = Number(hm[0]) || 9;
+    const mi = Number(hm[1]) || 0;
+    const ap = (parts[1] || "AM").toUpperCase();
+    if (ap === "PM" && h < 12) h += 12;
+    if (ap === "AM" && h === 12) h = 0;
+    const fmt = (hh: number, mm: number) => {
+      const period = hh >= 12 ? "PM" : "AM";
+      let H = hh % 12; if (H === 0) H = 12;
+      return `${H}:${mm.toString().padStart(2, "0")} ${period}`;
+    };
+
+    const maxNum = matches.length > 0 ? Math.max(...matches.map((m: any) => m.match_number)) : 0;
+    let n = maxNum + 1;
+    const rows: any[] = games.map((g, idx) => {
+      const slot = Math.floor(idx / 5);
+      const mins = mi + slot * 15;
+      return {
+        competition_id: currentCompId, match_number: n++, is_knockout: false, knockout_round: null, round: "Friendly",
+        category: g.cat, court: courts[idx % 5], scheduled_time: fmt(h + Math.floor(mins / 60), mins % 60),
+        game_type: g.gt, status: "upcoming", team1_id: teamA.id, team2_id: teamB.id,
+        team1_score: 0, team2_score: 0, team1_players: g.gt, team2_players: g.gt
+      };
+    });
+
+    const { error } = await supabase.from("matches").insert(rows);
+    if (error) return alert("Failed to create games: " + error.message);
+
+    const target = Math.floor(total / 2) + 1;
+    await supabase.from("competitions").update({ competition_type: "Friendly", format_type: "FriendlyHead2Head" }).eq("id", currentCompId);
+    await saveSettings(currentCompId, { teamA: a, teamB: b, menDoubles: friendlyMD, womenDoubles: friendlyWD, mixedDoubles: friendlyXD, gamesPerPair: 1, totalGames: total, targetWins: target });
+    setTournamentType("Friendly");
+    setTournamentFormat("FriendlyHead2Head");
+    await fetchData();
+    notify();
+    alert(`Friendly schedule created: ${total} games. First to ${target} wins takes the tie.`);
   };
 
   const exportDatabase = async () => {
@@ -329,6 +418,7 @@ export default function AdminPage() {
         status: 'active'
       }]).select().single();
       if (compError || !newComp) throw new Error(compError?.message || 'Could not create competition');
+      if (importData.competition.settings) await saveSettings(newComp.id, importData.competition.settings);
 
       const idMap: Record<string, string> = {};
       for (const team of (importData.teams || [])) {
@@ -358,8 +448,7 @@ export default function AdminPage() {
           scheduled_time: match.scheduled_time || 'TBD',
           game_type: match.game_type || 'TBD',
           status: match.status || 'upcoming',
-          team1_id: t1,
-          team2_id: t2,
+          team1_id: t1, team2_id: t2,
           team1_score: match.team1_score || 0,
           team2_score: match.team2_score || 0,
           winner_id: match.winner_id ? (idMap[match.winner_id] || null) : null,
@@ -393,15 +482,8 @@ export default function AdminPage() {
     }
   };
 
-  const groupMatches = matches.filter(m => !m.is_knockout);
-  const knockoutMatches = matches.filter(m => m.is_knockout);
-
-  const readScores = (matchId: string) => {
-    const s1 = parseInt((document.getElementById(`t1-${matchId}`) as HTMLInputElement)?.value);
-    const s2 = parseInt((document.getElementById(`t2-${matchId}`) as HTMLInputElement)?.value);
-    if (isNaN(s1) || isNaN(s2)) { alert("Please enter both scores (enter 0 if none)."); return null; }
-    return { s1, s2 };
-  };
+  const groupMatches = matches.filter((m: any) => !m.is_knockout);
+  const knockoutMatches = matches.filter((m: any) => m.is_knockout);
 
   if (!isAuthenticated) {
     return (
@@ -423,11 +505,12 @@ export default function AdminPage() {
         </div>
       </div>
 
+      {/* Tournament Management */}
       <div style={{ background: '#111111', border: '2px solid #C9A959', borderRadius: '4px', padding: '24px' }}>
         <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '16px' }}>Tournament Management</h2>
         <div style={{ marginBottom: '20px' }}>
           <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '8px' }}>Switch Competition</label>
-          <select value={currentCompId} onChange={(e) => { setCurrentCompId(e.target.value); const comp = competitions.find(c => c.id === e.target.value); if (comp) { setEditTournamentName(comp.name); setTournamentFormat(comp.format_type || 'round_robin_knockout'); setTournamentType(comp.competition_type || 'tournament'); } }} style={{ width: '100%', padding: '10px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
+          <select value={currentCompId} onChange={(e) => { setCurrentCompId(e.target.value); const comp = competitions.find((c: any) => c.id === e.target.value); if (comp) { setEditTournamentName(comp.name); setTournamentFormat(comp.format_type || 'GroupToKnockout'); setTournamentType(comp.competition_type || 'Tournament'); } }} style={{ width: '100%', padding: '10px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
             {competitions.map((c: any) => <option key={c.id} value={c.id}>{c.name} {c.status === 'archived' ? '(Archived)' : ''}</option>)}
           </select>
         </div>
@@ -448,24 +531,30 @@ export default function AdminPage() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
           <div>
             <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '8px' }}>Competition Type</label>
-            <select value={tournamentType} onChange={(e) => setTournamentType(e.target.value)} style={{ width: '100%', padding: '10px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
-              <option value="tournament">Tournament</option>
-              <option value="friendly">Friendly Match</option>
+            <select value={tournamentType} onChange={(e) => { setTournamentType(e.target.value); if (e.target.value === 'Friendly') setTournamentFormat('FriendlyHead2Head'); }} style={{ width: '100%', padding: '10px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
+              <option value="Tournament">Tournament</option>
+              <option value="Friendly">Friendly (2 teams)</option>
             </select>
           </div>
           <div>
             <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '8px' }}>Format</label>
-            <select value={tournamentFormat} onChange={(e) => setTournamentFormat(e.target.value)} style={{ width: '100%', padding: '10px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
-              <option value="round_robin_knockout">Round Robin → Knockout</option>
-              <option value="direct_knockout">Direct Knockout</option>
-              <option value="league">League (Round Robin Only)</option>
-              <option value="friendly">Friendly</option>
+            <select value={tournamentFormat} onChange={(e) => setTournamentFormat(e.target.value)} disabled={isFriendlyNow} style={{ width: '100%', padding: '10px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
+              {isFriendlyNow ? (
+                <option value="FriendlyHead2Head">Head-to-Head (single games)</option>
+              ) : (
+                <>
+                  <option value="GroupToKnockout">Round Robin → Knockout</option>
+                  <option value="DirectKnockout">Direct Knockout</option>
+                  <option value="League">League (Round Robin only)</option>
+                </>
+              )}
             </select>
           </div>
         </div>
         <button onClick={async () => { await supabase.from("competitions").update({ format_type: tournamentFormat, competition_type: tournamentType }).eq("id", currentCompId); notify(); alert("Tournament format saved!"); }} style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '10px 20px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Save Format</button>
       </div>
 
+      {/* Backup & Restore */}
       <div style={{ background: '#111111', border: '2px solid #C9A959', borderRadius: '4px', padding: '24px' }}>
         <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '16px' }}>Database Backup & Restore</h2>
         <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '16px' }}>
@@ -481,6 +570,44 @@ export default function AdminPage() {
         </div>
       </div>
 
+      {/* Friendly Builder */}
+      {isFriendlyNow && (
+        <div style={{ background: '#111111', border: '2px solid #C9A959', borderRadius: '4px', padding: '24px' }}>
+          <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '16px' }}>Friendly Schedule Builder (Head-to-Head)</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '4px' }}>Team A</label>
+              <input value={friendlyTeamA} onChange={(e) => setFriendlyTeamA(e.target.value)} placeholder="e.g. Team Singapore" style={{ width: '100%', padding: '8px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', boxSizing: 'border-box' }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '4px' }}>Team B</label>
+              <input value={friendlyTeamB} onChange={(e) => setFriendlyTeamB(e.target.value)} placeholder="e.g. Team Malaysia" style={{ width: '100%', padding: '8px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', boxSizing: 'border-box' }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '4px' }}>Men's Doubles</label>
+              <input type="number" min={0} value={friendlyMD} onChange={(e) => setFriendlyMD(parseInt(e.target.value) || 0)} style={{ width: '100%', padding: '8px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', boxSizing: 'border-box' }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '4px' }}>Women's Doubles</label>
+              <input type="number" min={0} value={friendlyWD} onChange={(e) => setFriendlyWD(parseInt(e.target.value) || 0)} style={{ width: '100%', padding: '8px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', boxSizing: 'border-box' }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '4px' }}>Mixed Doubles</label>
+              <input type="number" min={0} value={friendlyXD} onChange={(e) => setFriendlyXD(parseInt(e.target.value) || 0)} style={{ width: '100%', padding: '8px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', boxSizing: 'border-box' }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '4px' }}>Start Time</label>
+              <input value={friendlyStart} onChange={(e) => setFriendlyStart(e.target.value)} placeholder="9:00 AM" style={{ width: '100%', padding: '8px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', boxSizing: 'border-box' }} />
+            </div>
+          </div>
+          <button onClick={generateFriendlySchedule} style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '12px 24px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Generate Friendly Games</button>
+          <p style={{ color: '#888888', fontSize: '12px', marginTop: '12px', marginBottom: 0 }}>
+            Creates one game per pairing (MD1…MD4, WD1…WD4, XD1…XD7 by default), 5 courts per 15-min slot from the start time. Teams are auto-created if new. First to (total/2 + 1) wins takes the tie.
+          </p>
+        </div>
+      )}
+
+      {/* Display Settings */}
       <div style={{ background: '#111111', border: '1px solid #1a1a1a', borderRadius: '4px', padding: '24px' }}>
         <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '16px' }}>Live Screen Display Settings</h2>
         <div style={{ display: 'flex', gap: '24px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -494,13 +621,16 @@ export default function AdminPage() {
         </div>
       </div>
 
+      {/* Stage Manager */}
       <div style={{ background: '#111111', border: '1px solid #C9A959', borderRadius: '4px', padding: '24px' }}>
         <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '16px' }}>Knockout Stage Manager</h2>
-        <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
-          <button onClick={generateKnockoutStage} style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '12px 24px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Auto-Generate SF1, SF2 & Final (9 matches)</button>
-        </div>
+        {!isFriendlyNow && (
+          <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
+            <button onClick={generateKnockoutStage} style={{ background: '#C9A959', color: '#0a0a0a', border: 'none', padding: '12px 24px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Auto-Generate SF1, SF2 & Final (9 games)</button>
+          </div>
+        )}
         <div style={{ background: '#0a0a0a', padding: '16px', borderRadius: '4px', border: '1px solid #1a1a1a' }}>
-          <h3 style={{ fontSize: '14px', color: '#ffffff', marginTop: 0, marginBottom: '12px' }}>Add Custom Match</h3>
+          <h3 style={{ fontSize: '14px', color: '#ffffff', marginTop: 0, marginBottom: '12px' }}>Add Custom Game</h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
             <select value={newMatchType} onChange={(e) => setNewMatchType(e.target.value as any)} style={{ padding: '10px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
               <option value="group">Group Stage</option>
@@ -508,21 +638,22 @@ export default function AdminPage() {
             </select>
             {newMatchType === 'knockout' && (
               <select value={newMatchRound} onChange={(e) => setNewMatchRound(e.target.value)} style={{ padding: '10px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
-                {knockoutSlots.map(r => <option key={r} value={r}>{r}</option>)}
+                {knockoutSlots.map((r) => <option key={r} value={r}>{r}</option>)}
               </select>
             )}
             <select value={newMatchCategory} onChange={(e) => setNewMatchCategory(e.target.value)} style={{ padding: '10px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
-              {categories.map(c => <option key={c} value={c}>{c}</option>)}
+              {categories.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
             <input placeholder="Court" value={newMatchCourt} onChange={(e) => setNewMatchCourt(e.target.value)} style={{ padding: '10px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }} />
             <input placeholder="Time" value={newMatchTime} onChange={(e) => setNewMatchTime(e.target.value)} style={{ padding: '10px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }} />
-            <button onClick={addMatch} style={{ background: '#22c55e', color: 'white', border: 'none', padding: '10px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Add Match</button>
+            <button onClick={addMatch} style={{ background: '#22c55e', color: 'white', border: 'none', padding: '10px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Add Game</button>
           </div>
         </div>
       </div>
 
+      {/* Group / Friendly games */}
       <div>
-        <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#ffffff', marginBottom: '16px' }}>Group Stage Matches ({groupMatches.length})</h2>
+        <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#ffffff', marginBottom: '16px' }}>{isFriendlyNow ? 'Friendly Games' : 'Group Stage Games'} ({groupMatches.length})</h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {groupMatches.map((match: any) => (
             <div key={match.id} style={{ background: '#111111', border: '1px solid #1a1a1a', borderRadius: '4px', padding: '16px' }}>
@@ -548,11 +679,11 @@ export default function AdminPage() {
                   <div style={{ gridColumn: '1 / -1' }}>
                     <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '4px' }}>Category</label>
                     <select value={match.category} onChange={(e) => updateMatch(match.id, 'category', e.target.value)} style={{ width: '100%', padding: '8px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
-                      {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                      {categories.map((c) => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
                   <TeamSelect matchId={match.id} teamId={match.team1_id} customName={match.team1_custom_name} teamNum={1} teamsList={teams} onUpdate={updateMatch} />
-                  <TeamSelect matchId={match.id} teamId={match.team2_id} customName={match.team2_custom_name} teamNum={2} teamsList={teams} />
+                  <TeamSelect matchId={match.id} teamId={match.team2_id} customName={match.team2_custom_name} teamNum={2} teamsList={teams} onUpdate={updateMatch} />
                   <div>
                     <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '4px' }}>Player/s Name (Team 1)</label>
                     <input defaultValue={match.team1_players || ''} onBlur={(e) => updateMatch(match.id, 'team1_players', e.target.value)} placeholder="e.g. Doubles 1" style={{ width: '100%', padding: '8px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', boxSizing: 'border-box' }} />
@@ -589,6 +720,7 @@ export default function AdminPage() {
         </div>
       </div>
 
+      {/* Knockout games */}
       {knockoutMatches.length > 0 && (
         <div>
           <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#C9A959', marginBottom: '16px' }}>Knockout Stage ({knockoutMatches.length})</h2>
@@ -607,11 +739,11 @@ export default function AdminPage() {
                 {editingId === match.id && (
                   <div style={{ background: '#0a0a0a', padding: '16px', borderRadius: '4px', marginBottom: '12px', border: '1px solid #1a1a1a', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                     <TeamSelect matchId={match.id} teamId={match.team1_id} customName={match.team1_custom_name} teamNum={1} teamsList={teams} onUpdate={updateMatch} />
-                    <TeamSelect matchId={match.id} teamId={match.team2_id} customName={match.team2_custom_name} teamNum={2} teamsList={teams} />
+                    <TeamSelect matchId={match.id} teamId={match.team2_id} customName={match.team2_custom_name} teamNum={2} teamsList={teams} onUpdate={updateMatch} />
                     <div>
                       <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '4px' }}>Slot / Round</label>
-                      <select value={match.round || match.knockout_round} onChange={(e) => { const v = e.target.value; const ko = v === 'SF1' || v === 'SF2' ? 'Semi-Final' : v; supabase.from("matches").update({ round: v, knockout_round: ko }).eq("id", match.id).then(() => { fetchData(); notify(); }); }} style={{ width: '100%', padding: '8px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
-                        {knockoutSlots.map(r => <option key={r} value={r}>{r}</option>)}
+                      <select value={match.round || match.knockout_round} onChange={(e) => { const v = e.target.value; const ko = v === 'SF1' || v === 'SF2' ? 'Semi-Final' : v; supabase.from("matches").update({ round: v, knockout_round: ko }).eq("id", match.id).then(async () => { await fetchData(); notify(); }); }} style={{ width: '100%', padding: '8px', background: '#111111', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
+                        {knockoutSlots.map((r) => <option key={r} value={r}>{r}</option>)}
                       </select>
                     </div>
                     <div>
