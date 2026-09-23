@@ -510,7 +510,7 @@ export default function AdminPage() {
         <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#C9A959', marginTop: 0, marginBottom: '16px' }}>Tournament Management</h2>
         <div style={{ marginBottom: '20px' }}>
           <label style={{ display: 'block', fontSize: '12px', color: '#888888', marginBottom: '8px' }}>Switch Competition</label>
-          <select value={currentCompId} onChange={(e) => { setCurrentCompId(e.target.value); const comp = competitions.find((c: any) => c.id === e.target.value); if (comp) { setEditTournamentName(comp.name); setTournamentFormat(comp.format_type || 'GroupToKnockout'); setTournamentType(comp.competition_type || 'Tournament'); } }} style={{ width: '100%', padding: '10px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
+          <select value={currentCompId} onChange={async (e) => { const id = e.target.value; setCurrentCompId(id); await supabase.from("competitions").update({ status: 'archived' }).neq("id", id); await supabase.from("competitions").update({ status: 'active' }).eq("id", id); setCompetitions((prev: any[]) => prev.map((c: any) => ({ ...c, status: c.id === id ? 'active' : 'archived' }))); const comp = competitions.find((c: any) => c.id === id); if (comp) { setEditTournamentName(comp.name); setTournamentFormat(comp.format_type || 'GroupToKnockout'); setTournamentType(comp.competition_type || 'Tournament'); } notify(); }} style={{ width: '100%', padding: '10px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px' }}>
             {competitions.map((c: any) => <option key={c.id} value={c.id}>{c.name} {c.status === 'archived' ? '(Archived)' : ''}</option>)}
           </select>
         </div>
