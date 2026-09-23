@@ -2,17 +2,18 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
+const DEFAULT_CATEGORIES = ["Singles", "Doubles", "Men's Singles", "Men's Doubles", "Women's Singles", "Women's Doubles", "Mixed Doubles"];
+
 export default function Home() {
   const [matches, setMatches] = useState<any[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
   const [selectedTeam, setSelectedTeam] = useState<string>("All Teams");
   const [selectedCategory, setSelectedCategory] = useState<string>("All Categories");
+  const [categoryOptions, setCategoryOptions] = useState<string[]>(["All Categories", ...DEFAULT_CATEGORIES]);
   const [competitionName, setCompetitionName] = useState("PickleballLive Tournament");
   const [loading, setLoading] = useState(true);
   const [showTeamName, setShowTeamName] = useState(true);
   const [showPlayerName, setShowPlayerName] = useState(true);
-
-  const categories = ["All Categories", "Singles", "Doubles", "Men's Singles", "Men's Doubles", "Women's Singles", "Women's Doubles", "Mixed Doubles"];
 
   const fetchData = async () => {
     const { data: comps } = await supabase
@@ -27,17 +28,41 @@ export default function Home() {
       setLoading(false);
       return;
     }
+
     const { data: m } = await supabase
       .from("matches")
       .select("*, team1:team1_id(name), team2:team2_id(name)")
       .eq("competition_id", comp.id)
       .order("match_number");
+    const list = m || [];
+
+    // ONLY teams that belong to THIS tournament (from its games + its standings rows)
+    const { data: st } = await supabase
+      .from("group_standings")
+      .select("team_id")
+      .eq("competition_id", comp.id);
+    const ids = new Set<string>();
+    list.forEach((x: any) => {
+      if (x.team1_id) ids.add(x.team1_id);
+      if (x.team2_id) ids.add(x.team2_id);
+    });
+    (st || []).forEach((x: any) => {
+      if (x.team_id) ids.add(x.team_id);
+    });
     const { data: t } = await supabase.from("teams").select("*").order("name");
+    const compTeams = (t || []).filter((x: any) => ids.has(x.id));
+
+    // ONLY categories that occur in THIS tournament
+    const cats = Array.from(new Set(list.map((x: any) => x.category).filter(Boolean))) as string[];
+    const opts = ["All Categories", ...(cats.length ? cats.sort() : DEFAULT_CATEGORIES)];
+
     setCompetitionName(comp.name);
     setShowTeamName(comp.show_team_name !== false);
     setShowPlayerName(comp.show_player_name !== false);
-    setMatches(m || []);
-    setTeams(t || []);
+    setMatches(list);
+    setTeams(compTeams);
+    setCategoryOptions(opts);
+    setSelectedCategory((prev) => (opts.includes(prev) ? prev : "All Categories"));
     setLoading(false);
   };
 
@@ -105,7 +130,7 @@ export default function Home() {
         <div style={{ background: '#111111', border: '1px solid #1a1a1a', borderRadius: '4px', padding: '16px' }}>
           <label style={{ display: 'block', fontSize: '11px', color: '#888888', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>Category</label>
           <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} style={{ width: '100%', padding: '10px', background: '#0a0a0a', border: '1px solid #2a2a2a', color: 'white', borderRadius: '4px', fontSize: '14px' }}>
-            {categories.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
+            {categoryOptions.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
           </select>
         </div>
       </div>
@@ -171,7 +196,7 @@ export default function Home() {
               </div>
             );
           })}
-          {filteredMatches.length === 0 && <div style={{ textAlign: 'center', padding: '48px', color: '#888888' }}>No matches found</div>}
+          {filteredMatches.length === 0 && <div style={{ textAlign: 'center', padding: '48px', color: '#888888' }}>No games found</div>}
         </div>
       </div>
     </div>
