@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
-const ROUND_ORDER = ["R128", "R64", "R32", "R16", "Quarter-Final", "Semi-Final", "Final"];
+const ROUND_ORDER = ["R128", "R64", "R32", "R16", "Quarter-Final", "Semi-Final", "3rd/4th", "Final"];
 const GAME_ORDER: Record<string, number> = { "Doubles 1": 1, "Doubles 2": 2, "Singles": 3 };
 
 export default function BracketPage() {
@@ -70,6 +70,7 @@ export default function BracketPage() {
   const friendlyLabel = (slot: string, roundName: string) => {
     const sf = slot.match(/^SF(\d+)$/);
     if (sf) return `Semi-Final ${sf[1]}`;
+    if (slot === "3rd/4th") return "3rd/4th Place";
     if (slot === "Final") return "Final";
     return slot || roundName;
   };

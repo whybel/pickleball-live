@@ -33,12 +33,22 @@ const TrophyIcon = () => (
   </svg>
 );
 
+const MedalIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="14.5" r="5.5" />
+    <path d="M12 12l.8 1.6 1.8.27-1.3 1.27.3 1.79-1.6-.84-1.6.84.3-1.79-1.3-1.27 1.8-.27z" fill="currentColor" stroke="none" />
+    <path d="M9 9.2 6.5 2h3.6l1.9 4.6" />
+    <path d="M15 9.2 17.5 2h-3.6L12 6.6" />
+  </svg>
+);
+
 export default function BottomNav() {
   const pathname = usePathname();
   const items = [
     { href: "/", label: "LIVE", icon: <PaddleIcon /> },
     { href: "/standings", label: "STANDINGS", icon: <ChartIcon /> },
     { href: "/bracket", label: "BRACKET", icon: <TrophyIcon /> },
+    { href: "/results", label: "RESULTS", icon: <MedalIcon /> },
   ];
   return (
     <nav className="bottom-nav">

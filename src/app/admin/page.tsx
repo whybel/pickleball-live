@@ -84,7 +84,7 @@ export default function AdminPage() {
   const [friendlyStart, setFriendlyStart] = useState("9:00 AM");
 
   const categories = ["Singles", "Doubles", "Men's Singles", "Men's Doubles", "Women's Singles", "Women's Doubles", "Mixed Doubles"];
-  const knockoutSlots = ["SF1", "SF2", "Final", "Quarter-Final", "Semi-Final", "R16", "R32", "R64", "R128"];
+  const knockoutSlots = ["SF1", "SF2", "3rd/4th", "Final", "Quarter-Final", "Semi-Final", "R16", "R32", "R64", "R128"];
 
   const isFriendlyNow = (tournamentType || "").toLowerCase() === "friendly";
 
