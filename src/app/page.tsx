@@ -14,6 +14,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [showTeamName, setShowTeamName] = useState(true);
   const [showPlayerName, setShowPlayerName] = useState(true);
+  const [viewMode, setViewMode] = useState<"list" | "courts">("list");
 
   const fetchData = async () => {
     const { data: comps } = await supabase
@@ -36,7 +37,6 @@ export default function Home() {
       .order("match_number");
     const list = m || [];
 
-    // ONLY teams that belong to THIS tournament (from its games + its standings rows)
     const { data: st } = await supabase
       .from("group_standings")
       .select("team_id")
@@ -52,7 +52,6 @@ export default function Home() {
     const { data: t } = await supabase.from("teams").select("*").order("name");
     const compTeams = (t || []).filter((x: any) => ids.has(x.id));
 
-    // ONLY categories that occur in THIS tournament
     const cats = Array.from(new Set(list.map((x: any) => x.category).filter(Boolean))) as string[];
     const opts = ["All Categories", ...(cats.length ? cats.sort() : DEFAULT_CATEGORIES)];
 
@@ -100,7 +99,35 @@ export default function Home() {
     return teamMatch && categoryMatch;
   });
 
+  const courtOrder = (c: string) => {
+    const m = String(c).match(/Court\s*(\d+)/i);
+    return m ? parseInt(m[1], 10) : 999;
+  };
+  const courts = Array.from(new Set(filteredMatches.map((m: any) => m.court).filter(Boolean))) as string[];
+  courts.sort((a, b) => courtOrder(a) - courtOrder(b));
+  const byCourt: Record<string, any[]> = {};
+  filteredMatches.forEach((m: any) => {
+    (byCourt[m.court] = byCourt[m.court] || []).push(m);
+  });
+  Object.values(byCourt).forEach((l) => l.sort((a, b) => a.match_number - b.match_number));
+
   if (loading) return <div style={{ textAlign: 'center', padding: '48px', color: '#C9A959' }}>Loading...</div>;
+
+  const btn = (active: boolean): any => ({
+    background: active ? "#C9A959" : "#111111",
+    color: active ? "#0a0a0a" : "#888888",
+    border: "1px solid " + (active ? "#C9A959" : "#2a2a2a"),
+    padding: "8px 16px",
+    borderRadius: 4,
+    fontWeight: 700,
+    fontSize: 12,
+    cursor: "pointer",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  });
+
+  const scoreOf = (g: any, side: 1 | 2) =>
+    g.status === "completed" || g.status === "live" ? (side === 1 ? g.team1_score : g.team2_score) : "-";
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
@@ -135,8 +162,17 @@ export default function Home() {
         </div>
       </div>
 
-      <div>
-        <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#ffffff', marginBottom: '24px' }}>LIVE & UPCOMING GAMES</h2>
+      <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+        <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#ffffff', margin: 0 }}>
+          {viewMode === 'list' ? 'LIVE & UPCOMING GAMES' : 'COURT BY COURT'}
+        </h2>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => setViewMode('list')} style={btn(viewMode === 'list')}>List View</button>
+          <button onClick={() => setViewMode('courts')} style={btn(viewMode === 'courts')}>Court View</button>
+        </div>
+      </div>
+
+      {viewMode === 'list' ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {filteredMatches.map((match: any) => {
             const t1Name = match.team1_custom_name?.trim() || match.team1?.name || 'TBD';
@@ -198,7 +234,80 @@ export default function Home() {
           })}
           {filteredMatches.length === 0 && <div style={{ textAlign: 'center', padding: '48px', color: '#888888' }}>No games found</div>}
         </div>
-      </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 16, alignItems: 'start' }}>
+          {courts.map((court) => {
+            const list = byCourt[court] || [];
+            const liveGame = list.find((g) => g.status === 'live');
+            const nextGame = list.find((g) => g.status !== 'completed');
+            const allDone = list.length > 0 && list.every((g) => g.status === 'completed');
+            return (
+              <div key={court} style={{ background: '#0d0d0d', border: '1px solid #1a1a1a', borderRadius: 6, overflow: 'hidden' }}>
+                <div style={{
+                  background: liveGame ? 'rgba(59,130,246,0.15)' : 'rgba(201,169,89,0.12)',
+                  borderBottom: `2px solid ${liveGame ? '#3b82f6' : '#C9A959'}`,
+                  padding: '10px 12px',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                }}>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: '#ffffff', letterSpacing: 1 }}>{String(court).toUpperCase()}</span>
+                  {liveGame ? (
+                    <span style={{ fontSize: 10, fontWeight: 800, color: '#3b82f6', letterSpacing: 1 }}>● LIVE</span>
+                  ) : allDone ? (
+                    <span style={{ fontSize: 10, fontWeight: 700, color: '#22c55e', letterSpacing: 1 }}>DONE</span>
+                  ) : nextGame ? (
+                    <span style={{ fontSize: 10, fontWeight: 700, color: '#888888', letterSpacing: 1 }}>NEXT {nextGame.scheduled_time}</span>
+                  ) : null}
+                </div>
+                <div style={{ padding: 10 }}>
+                  {list.map((g: any) => {
+                    const t1 = g.team1_custom_name?.trim() || g.team1?.name || 'TBD';
+                    const t2 = g.team2_custom_name?.trim() || g.team2?.name || 'TBD';
+                    const isNext = !!nextGame && g.id === nextGame.id && g.status !== 'live';
+                    return (
+                      <div key={g.id} style={{
+                        background: g.status === 'live' ? 'rgba(59,130,246,0.08)' : '#111111',
+                        border: `1px solid ${g.status === 'live' ? '#3b82f6' : isNext ? '#C9A959' : '#1a1a1a'}`,
+                        borderRadius: 4,
+                        padding: 10,
+                        marginBottom: 8,
+                        opacity: g.status === 'completed' ? 0.7 : 1,
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#888888', marginBottom: 6, letterSpacing: 0.5 }}>
+                          <span>#{g.match_number} • {g.scheduled_time}</span>
+                          <span>{g.game_type}</span>
+                        </div>
+                        <div style={{ marginBottom: 4 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                            <span style={{ fontSize: 12, fontWeight: 600, color: g.winner_id === g.team1_id ? '#C9A959' : '#ffffff' }}>{t1}</span>
+                            <span style={{ fontSize: 13, fontWeight: 800, color: '#ffffff' }}>{scoreOf(g, 1)}</span>
+                          </div>
+                          {showPlayerName && g.team1_players?.trim() ? <div style={{ fontSize: 10, color: '#888888' }}>{g.team1_players}</div> : null}
+                        </div>
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                            <span style={{ fontSize: 12, fontWeight: 600, color: g.winner_id === g.team2_id ? '#C9A959' : '#ffffff' }}>{t2}</span>
+                            <span style={{ fontSize: 13, fontWeight: 800, color: '#ffffff' }}>{scoreOf(g, 2)}</span>
+                          </div>
+                          {showPlayerName && g.team2_players?.trim() ? <div style={{ fontSize: 10, color: '#888888' }}>{g.team2_players}</div> : null}
+                        </div>
+                        <div style={{
+                          marginTop: 6, paddingTop: 6, borderTop: '1px solid #1a1a1a',
+                          fontSize: 10, fontWeight: 700, letterSpacing: 1, textAlign: 'center',
+                          color: g.status === 'live' ? '#3b82f6' : g.status === 'completed' ? '#22c55e' : isNext ? '#C9A959' : '#888888',
+                        }}>
+                          {g.status === 'live' ? 'LIVE NOW' : g.status === 'completed' ? `WINNER: ${g.winner_id === g.team1_id ? t1 : t2}` : isNext ? 'NEXT UP' : 'UPCOMING'}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {list.length === 0 && <div style={{ padding: 16, textAlign: 'center', color: '#888888', fontSize: 11 }}>No games</div>}
+                </div>
+              </div>
+            );
+          })}
+          {courts.length === 0 && <div style={{ textAlign: 'center', padding: '48px', color: '#888888', gridColumn: '1 / -1' }}>No games found</div>}
+        </div>
+      )}
     </div>
   );
 }
